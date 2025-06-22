@@ -23,12 +23,16 @@ internal enum Opcode
 
 public sealed class Gateway
 {
-    #region Message
+    #region Events
+    
+    # region Messages
     
     /// <summary>
     /// Dispatched when a message is sent. Requires <see cref="Intents.GuildMessages"/> and or <see cref="Intents.DmMessages"/>.
     /// </summary>
     public event EventHandler<Message>? OnMessageCreate;
+    
+    #endregion
     
     #endregion
     
@@ -51,7 +55,7 @@ public sealed class Gateway
     {
         _bot = bot;
         _token = token;
-        this._intents = intents;
+        _intents = intents;
         _heartbeatResponse = false;
     }
 
@@ -75,7 +79,8 @@ public sealed class Gateway
             _webSocket.Options.KeepAliveInterval = TimeSpan.FromMilliseconds(_heartbeatInterval);
 
         // Connect to the gateway
-        var uri = new Uri(_resumeGatewayUrl ?? $"wss://gateway.discord.gg/?v={GatewayVersion}&encoding=json");
+        string wssUrl = await _bot._rest.GetGatewayAsync();
+        var uri = new Uri(_resumeGatewayUrl ?? wssUrl + $"/?v={GatewayVersion}&encoding=json");
         await _webSocket.ConnectAsync(uri, _cts.Token);
         Dev.Log("New connection initiated");
 
@@ -311,8 +316,10 @@ public sealed class Gateway
     }
     
     // Converts the Discord JSON payload into an object in this library.
-    internal static T Deserialize<T>(object? payload) =>
-        JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(payload))!;
+    internal static T Deserialize<T>(object? payload)
+    {
+        return JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(payload))!;
+    }
 
     // Processes incoming Gateway payloads.
     private async Task ProcessPayloadAsync(GatewayPayload payload)
@@ -336,7 +343,8 @@ public sealed class Gateway
                         Dev.Log("Gateway resumed (from dispatch)", ConsoleColor.Green);
                         break;
                     case "MESSAGE_CREATE":
-                        OnMessageCreate?.Invoke(this, Deserialize<Message>(payload.Data));
+                        var messageCreated = Deserialize<Message>(payload.Data);
+                        OnMessageCreate?.Invoke(this, messageCreated);
                         break;
                 }
                 break;
@@ -357,7 +365,7 @@ public sealed class Gateway
 
             case 9: // Invalid Session
                 var resumable = payload.Data.Value<bool>();
-                Console.WriteLine($"Invalid session received from dispatch, resumable: {resumable}", ConsoleColor.Red);
+                Dev.Log($"Invalid session received from dispatch, resumable: {resumable}", ConsoleColor.Red);
                 if (resumable)
                     await ConnectAsync(Opcode.Resume);
                 else
