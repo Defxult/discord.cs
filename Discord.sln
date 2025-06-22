@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Discord", "Discord.csproj", "{9708480E-6ACA-4821-AAFE-5FA91A30B767}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "App", "..\App\App.csproj", "{3FFDFBA7-38CA-4D5C-8D53-71CB7597CAD1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{9708480E-6ACA-4821-AAFE-5FA91A30B767}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9708480E-6ACA-4821-AAFE-5FA91A30B767}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9708480E-6ACA-4821-AAFE-5FA91A30B767}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9708480E-6ACA-4821-AAFE-5FA91A30B767}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3FFDFBA7-38CA-4D5C-8D53-71CB7597CAD1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FFDFBA7-38CA-4D5C-8D53-71CB7597CAD1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FFDFBA7-38CA-4D5C-8D53-71CB7597CAD1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FFDFBA7-38CA-4D5C-8D53-71CB7597CAD1}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
