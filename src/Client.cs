@@ -11,15 +11,17 @@ public class Bot
     public string? SessionId => _gateway._sessionId;
 
     public Gateway Events => _gateway;
-    
-    
 
+
+    internal Rest _rest;
     private readonly Gateway _gateway;
+    
 
     public Bot(string token, Intents intents)
     {
         Token = token;
         _gateway = new Gateway(this, token, intents);
+        _rest = new Rest(this);
     }
 
     public async Task RunAsync()
