@@ -1,8 +1,11 @@
+using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
 using Discord.Models;
+using Discord.Utility;
+using Newtonsoft.Json;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace Discord.Net;
 
@@ -21,7 +24,20 @@ internal enum Opcode
     HeartbeatAck
 }
 
-public sealed class Gateway
+public record Shard
+{
+    public int Id { get; init; }
+    public int TotalShards { get; internal set; }
+    public string? Nickname;
+
+    public Shard(int id, string? nickname = null)
+    {
+        Id = id;
+        Nickname = nickname;
+    }
+}
+
+public sealed class DiscordGatewayClient
 {
     #region Events
     
@@ -36,175 +52,201 @@ public sealed class Gateway
     
     #endregion
     
-    internal ClientWebSocket _webSocket = new();
-    internal Intents _intents;
     internal string? _sessionId;
     internal string? _resumeGatewayUrl;
+    internal const string UriParameters = "/?v=10&encoding=json";
     
-    private const int GatewayVersion = 10;
     private Bot _bot;
+    internal ClientWebSocket _ws;
+    private Intents _intents;
     private readonly string _token;
     private ulong? _lastSequence;
-    private CancellationTokenSource _cts = new();
+    private CancellationTokenSource _cts;
     private Task _heartbeatTask;
     private Task _receiveTask;
     private int _heartbeatInterval;
     private bool _heartbeatResponse;
+    private bool _identifyRequired;
 
-    internal Gateway(Bot bot, string token, Intents intents)
+    internal DiscordGatewayClient(Bot bot, string token, Intents intents)
     {
         _bot = bot;
         _token = token;
         _intents = intents;
+        _heartbeatInterval = 30_000;
         _heartbeatResponse = false;
+        _identifyRequired = true;
+        _cts = new CancellationTokenSource();
+        _ws = new ClientWebSocket();
+    }
+
+    // Gracefully closes the WebSocket connection and sets a new WebSocket object and CancellationTokenSource.
+    private async Task RefreshWebSocket()
+    {
+        try
+        {
+            if (_ws.State == WebSocketState.Open)
+            {
+                await _ws.CloseAsync(WebSocketCloseStatus.Empty, string.Empty, _cts.Token);
+                Dev.Log("[GW] Client WebSocket Closed");
+            }
+        }
+        catch (Exception e)
+        {
+            Dev.Log($"[ERROR, RefreshWebSocket] {e.Message}]");
+        }
+        finally
+        {
+            await _cts.CancelAsync();
+            _ws.Dispose();
+            _ws = new ClientWebSocket();
+            _ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(10);
+            _cts = new CancellationTokenSource();
+        }
     }
 
     // Connects to the Discord Gateway and starts processing events.
-    internal async Task ConnectAsync(Opcode type)
+    internal async Task ConnectAsync(bool resume)
     {
-        if (!_cts.IsCancellationRequested)
-            await _cts.CancelAsync();
-        
-        List<Opcode> validTypes = [Opcode.Identify, Opcode.Resume];
-        if (!validTypes.Contains(type))
-            throw new ArgumentException($"Opcode type {type} is invalid in this context");
-        
-        if (_webSocket.State == WebSocketState.Open)
-            await _webSocket.CloseAsync(WebSocketCloseStatus.Empty, string.Empty, _cts.Token);
-        
-        _cts = new CancellationTokenSource();
-        _webSocket = new ClientWebSocket();
-        
-        if (_heartbeatInterval > 0)
-            _webSocket.Options.KeepAliveInterval = TimeSpan.FromMilliseconds(_heartbeatInterval);
-
-        // Connect to the gateway
-        string wssUrl = await _bot._rest.GetGatewayAsync();
-        var uri = new Uri(_resumeGatewayUrl ?? wssUrl + $"/?v={GatewayVersion}&encoding=json");
-        await _webSocket.ConnectAsync(uri, _cts.Token);
-        Dev.Log("New connection initiated");
-
-        // Receive the HELLO event
-        var helloPayload = await ReceivePayloadAsync();
-        
-        if (helloPayload is null)
-            throw new GatewayException("Unexpected null payload disconnect");
-        if (helloPayload.Op != (int)Opcode.Hello)
-            throw new DiscordException("Expected Hello event");
-
-        _heartbeatInterval = helloPayload.Data["heartbeat_interval"]!.Value<int>();
-        Dev.Log($"Received Opcode HELLO, heartbeat interval: {_heartbeatInterval}ms");
-
-
-        // Send Identify or Resume
-        if (type == Opcode.Resume)
+        await RefreshWebSocket();
+        if (resume)
+        {
+            Dev.Log("[GW] Connecting with RESUME");
+            await _ws.ConnectAsync(new Uri(_resumeGatewayUrl + UriParameters), _cts.Token);
             await SendResumeAsync();
+        }
         else
         {
-            ResetCoreValues();
-            await SendIdentifyAsync();
+            string wss = await _bot._rest.GetGatewayAsync();
+            //await _bot._rest.GetGatewayBotAsync();
+            Dev.Log("[GW] Connecting with IDENTIFY");
+            await _ws.ConnectAsync(new Uri(wss + UriParameters), _cts.Token);
         }
 
-        // Start the heartbeat/gateway receive tasks
+        // Start the heartbeat/gateway receive tasks.
         _heartbeatTask = Task.Run(HeartbeatLoopAsync, _cts.Token);
-        _receiveTask = Task.Run(ProcessReceiveAsync, _cts.Token);
-        await _receiveTask.ContinueWith(task =>
+        _receiveTask = Task.Run(ReceiveAsync).ContinueWith(task =>
         {
             if (task.IsFaulted)
-                throw task.Exception;
-        });
+                throw task.Exception.InnerException!;
+        }, _cts.Token);;
     }
 
-    // Used when the end user wants to disconnect from the gateway, otherwise not used internally
-    internal async Task UserDisconnectAsync(bool instant)
-    {
-        ResetCoreValues();
-        await _webSocket.CloseAsync(
-            instant ? WebSocketCloseStatus.NormalClosure : WebSocketCloseStatus.Empty,
-            string.Empty, 
-            _cts.Token);
-        await _cts.CancelAsync();
-    }
+    // Used when the end user wants to disconnect from gateway, otherwise not used internally
+    // internal async Task UserDisconnectAsync(bool instant)
+    // {
+    //     ResetCoreValues();
+    //     await _ws.CloseAsync(
+    //         instant ? WebSocketCloseStatus.NormalClosure : WebSocketCloseStatus.Empty,
+    //         string.Empty, 
+    //         _cts.Token);
+    //     await _cts.CancelAsync();
+    // }
 
-    // Resets values associated with the gateway that would indicate a new connection
+    // Resets values associated with the gateway that would indicate a new connection.
     private void ResetCoreValues()
     {
         _sessionId = null;
         _resumeGatewayUrl = null;
         _lastSequence = null;
+        _identifyRequired = true;
     }
 
-    // Main event processing loop
-    private async Task ProcessReceiveAsync()
+    private async Task HeartbeatLoopAsync()
     {
-        int? closeCode = -1;
-        while (_webSocket.State == WebSocketState.Open)
+        Dev.Log("[GW] Heartbeat loop started");
+        while (true)
         {
-            var payload = await ReceivePayloadAsync();
-            if (payload is null) // WebSocket closed
+            await Task.Delay(_heartbeatInterval, _cts.Token);
+            if (_ws.State == WebSocketState.Open)
+                await SendHeartbeatAsync();
+            else
             {
-                if (_webSocket.CloseStatus != null) // According to Discord, sometimes the connection can close with no close code
-                    closeCode = (int)_webSocket.CloseStatus;
-                Dev.Log($"WebSocket closed by Discord with error code {closeCode}");
+                Dev.Log($"[GW] Heartbeat loop terminated due to connection state ({_ws.State})");
                 break;
             }
-            await ProcessPayloadAsync(payload);
         }
+    }
 
+    // Main event processing loop.
+    private async Task ReceiveAsync()
+    {
+        var closeCode = -1;
+        while (_ws.State == WebSocketState.Open)
+        {
+            GatewayPayload? payload = await ConvertPayloadAsync();
+            if (payload is not null) // AKA isn't closed
+                await HandleDiscordEventAsync(payload);
+            else
+            {
+                // According to Discord, sometimes the connection can close with no close code.
+                if (_ws.CloseStatus is { } status)
+                    closeCode = (int)status;
+            }
+        }
+        
+        // Identifies which types of disconnects are resumable.
+        // https://discord.com/developers/docs/topics/opcodes-and-status-codes#gateway-gateway-close-event-codes
         switch (closeCode)
         {
             case -1:
-                Dev.Log("WebSocket closed with no close code - resuming");
-                await ConnectAsync(Opcode.Reconnect);
+                Dev.Log("[GW] WebSocket closed with no close code - resuming session");
+                await ConnectAsync(true);
                 break;
             case 4000:
-                Dev.Log("Unknown error/Discord wasn't sure what went wrong - reconnecting", ConsoleColor.Red);
-                await ConnectAsync(Opcode.Reconnect);
+                Dev.Log("[GW] Unknown error/Discord wasn't sure what went wrong - resuming session", ConsoleColor.Yellow);
+                await ConnectAsync(true);
                 break;
             case 4001:
-                throw new UnknownOpcodeException("An invalid Gateway opcode or an invalid payload for an opcode was sent");
+                throw new UnknownOpcodeException(
+                    "An invalid Gateway opcode or an invalid payload for an opcode was sent");
             case 4002:
-                throw new DecodeErrorException("An invalid payload was sent.");
+                throw new DecodeErrorException("An invalid payload was sent");
             case 4003:
-                Dev.Log("A payload prior to identifying was sent, or this session has been invalidated - starting a new session", ConsoleColor.Red);
-                await ConnectAsync(Opcode.Identify);
+                Dev.Log(
+                    "A payload prior to identifying was sent, or this session has been invalidated - starting a new session",
+                    ConsoleColor.Red);
+                await ConnectAsync(false);
                 break;
             case 4004:
-                throw new AuthenticationFailedException("The account token sent with your identify payload is incorrect");
+                throw new AuthenticationFailedException(
+                    "The account token sent with your identify payload is incorrect");
             case 4005:
                 throw new AlreadyAuthenticatedException("More than one identify payload was sent");
             case 4007:
-                Dev.Log("The sequence sent when resuming the session was invalid - starting a new session", ConsoleColor.Red);
-                await ConnectAsync(Opcode.Identify);
+                Dev.Log("The sequence sent when resuming the session was invalid - starting a new session",
+                    ConsoleColor.Red);
+                await ConnectAsync(false);
                 break;
             case 4008:
-                Dev.Log("Payloads are being sent too quickly - reconnecting",  ConsoleColor.Red);
-                await ConnectAsync(Opcode.Reconnect);
+                Dev.Log("Payloads are being sent too quickly - resuming session", ConsoleColor.Red);
+                await ConnectAsync(true);
                 break;
             case 4009:
-                Dev.Log("Session timed out - starting a new session", ConsoleColor.Red);
-                await ConnectAsync(Opcode.Identify);
+                Dev.Log("Session timed out - starting new session", ConsoleColor.Red);
+                await ConnectAsync(false);
                 break;
             case 4010:
                 throw new InvalidShardException("An invalid shard was sent when identifying");
             case 4011:
-                throw new ShardingRequiredException("The session would have handled too many guilds - you are required to shard your connection in order to connect");
+                throw new ShardingRequiredException(
+                    "The session would have handled too many guilds - you are required to shard your connection in order to connect");
             case 4012:
                 throw new InvalidApiVersionException("An invalid version for the gateway was sent");
             case 4013:
                 throw new InvalidIntentsException("An invalid intent for a Gateway Intent was sent");
             case 4014:
                 throw new DisallowedIntentsException(
-                    "A disallowed intent for a Gateway Intent was sent. An intent may have been specified that you have not enabled or are not approved for.");
+                    "A disallowed intent for a Gateway Intent was sent. An intent may have been specified that you have not enabled or are not approved for");
         }
     }
 
-    /// Sends the Resume payload to resume a previous session.
+    // Sends the Resume payload to continue a previous session.
     private async Task SendResumeAsync()
     {
         var resume = new
         {
-            op = (int)Opcode.Resume,
+            op = Opcode.Resume,
             d = new
             {
                 token = _token,
@@ -212,20 +254,21 @@ public sealed class Gateway
                 seq = _lastSequence
             }
         };
-        await SendPayloadAsync(resume);
-        Dev.Log("RESUME payload sent");
+        await SendJsonAsync(resume);
+        Dev.Log("[GW] RESUME payload sent");
     }
 
-    // Sends the Identify payload to authenticate with the Gateway.
+    // Sends the Identify payload to authenticate with the gateway.
     private async Task SendIdentifyAsync()
     {
         const string lib = "discord.cs";
         var identify = new
         {
-            op = (int)Opcode.Identify,
+            op = Opcode.Identify,
+            shard = new[] { _bot.ShardId, 1 }, // TODO
             d = new
             {
-                intents = (int)_intents,
+                intents = _intents,
                 token = _token,
                 properties = new
                 {
@@ -235,145 +278,169 @@ public sealed class Gateway
                 },
             }
         };
-        
-        await SendPayloadAsync(identify);
-        Dev.Log("Opcode IDENTIFY payload sent");
+        await SendJsonAsync(identify);
+        Dev.Log("[GW] IDENTIFY payload sent");
     }
     
-    // Receives a payload from the WebSocket connection
-    private async Task<GatewayPayload?> ReceivePayloadAsync()
+    // Converts the Discord JSON payload into an object in this library.
+    private async Task SendJsonAsync(object payload)
     {
-        List<byte> allBytes = [];
-        ArraySegment<byte> buffer = new(new byte[4096]);
-        WebSocketReceiveResult result;
-
-        // ReceiveAsync() needs to be called multiple times to complete the message. What would happen was if it was only
-        // called once, an error would occur because JsonConvert.DeserializeObject could not work as intended due to
-        // it only receiving a portion of the JSON response. This insures the entire response is added together (as bytes)
-        // until the entire response is received
-        do
-        {
-            result = await _webSocket.ReceiveAsync(buffer, _cts.Token);
-            if (result.CloseStatus is not null) continue;
-            for (var i = 0; i < result.Count; i++)
-                allBytes.Add(buffer.Array![i]);
-        } while (!result.EndOfMessage);
-        
-
-        if (result.MessageType == WebSocketMessageType.Close)
-            return null;
-        
-        var json = Encoding.UTF8.GetString(allBytes.ToArray(), 0, allBytes.Count);
-        return JsonConvert.DeserializeObject<GatewayPayload>(json);
+        var json = JsonSerializer.Serialize(payload);
+        var seg = Encoding.UTF8.GetBytes(json);
+        await _ws.SendAsync(seg, WebSocketMessageType.Text, true, _cts.Token);
     }
-
-    // Runs the heartbeat loop to keep the connection alive
-    private async Task HeartbeatLoopAsync()
+    
+    // Generates the payload into a single payload object which contains things such as the event name, its data, etc.
+    private async Task<GatewayPayload?> ConvertPayloadAsync()
     {
-        while (!_cts.IsCancellationRequested)
+        try
         {
-            await Task.Delay(_heartbeatInterval, _cts.Token);
-            if (_webSocket.State == WebSocketState.Open)
+            var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+            var builder = new ArrayBufferWriter<byte>();
+            WebSocketReceiveResult? result;
+            do
             {
-                await SendHeartbeatAsync();
-            }
+                result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), _cts.Token);
+                if (result.MessageType == WebSocketMessageType.Close)
+                    return null;
+                builder.Write(new ReadOnlySpan<byte>(buffer, 0, result.Count));
+            } while (!result.EndOfMessage);
+
+            var data = builder.WrittenSpan.ToArray();
+            var json = Encoding.UTF8.GetString(data);
+            var doc = JsonDocument.Parse(json);
+            return GatewayPayload.FromJson(doc.RootElement);
+        }
+        catch (Exception ex)
+        {
+            Dev.Log($"[GW ERROR] - {ex.Message}", ConsoleColor.Red);
+            return null;
         }
     }
-
-    // Sends a Heartbeat payload to the Gateway
+    
+    // Sends a Heartbeat payload to the gateway.
     private async Task SendHeartbeatAsync()
     {
         var heartbeat = new
         {
-            op = (int)Opcode.Heartbeat,
+            op = Opcode.Heartbeat,
             d = _lastSequence
         };
-        await SendPayloadAsync(heartbeat);
-        Dev.Log("Heartbeat sent");
+        await SendJsonAsync(heartbeat);
+        Dev.Log("[GW] HEARTBEAT payload sent");
+
+        await VerifyHeartbeat();
+        return;
 
         // Discord documentation:
         // If a client does not receive a heartbeat ACK between its attempts at sending heartbeats, this may be due to
         // a failed or "zombied" connection. The client should immediately terminate the connection with any close code
         // besides 1000 or 1001, then reconnect and attempt to Resume.
-        _heartbeatResponse = false;
-        
-        // Wait for heartbeat ACK to be sent by Discord.
-        await Task.Delay(1500,  _cts.Token);
-        
-        if (!_heartbeatResponse)
+        async Task VerifyHeartbeat()
         {
-            Dev.Log("Heartbeat timed out");
-            await ConnectAsync(Opcode.Resume);
+            _heartbeatResponse = false;
+            
+            // Wait for heartbeat ACK to be sent by Discord. This response time can differ based on server host location.
+            // For now, waiting ~2 seconds seems like enough time to believe that a possible "zombie" connection occurred.
+            var timeout = TimeSpan.FromSeconds(2);
+            await Task.Delay(timeout, _cts.Token);
+            
+            if (!_heartbeatResponse)
+            {
+                Dev.Log($"[GW] Heartbeat timed out ({timeout.Seconds}s) - resuming session");
+                await ConnectAsync(true);
+            }
         }
     }
 
-    // Sends a payload over the WebSocket connection.
-    private async Task SendPayloadAsync(object payload)
+    // Sets the most recent sequence number so the gateway can conduct a session Resume.
+    private void UpdateSequence(GatewayPayload payload)
     {
-        var json = JsonConvert.SerializeObject(payload);
-        var buffer = Encoding.UTF8.GetBytes(json);
-        await _webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, _cts.Token);
+        if (payload.S.HasValue)
+            _lastSequence = payload.S.Value;
+    }
+
+    private static JsonElement GetElementValue(JsonElement element, string key) => 
+        element.GetProperty(key);
+    
+    internal static T DeserializeWithNewtonsoft<T>(JsonElement element)
+    {
+        string json = element.GetRawText();
+        return JsonConvert.DeserializeObject<T>(json)!;
     }
     
-    // Converts the Discord JSON payload into an object in this library.
-    internal static T Deserialize<T>(object? payload)
+    // Processes incoming Gateway events/payloads.
+    private async Task HandleDiscordEventAsync(GatewayPayload payload)
     {
-        return JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(payload))!;
-    }
-
-    // Processes incoming Gateway payloads.
-    private async Task ProcessPayloadAsync(GatewayPayload payload)
-    {
-        // Update sequence number if present.
-        if (payload.Sequence.HasValue)
-            _lastSequence = payload.Sequence.Value;
-
+        UpdateSequence(payload);
         switch (payload.Op)
         {
             case 0: // Dispatch (this contains every common event)
-                switch (payload.EventName)
+                switch (payload.T)
                 {
                     case "READY":
-                        var readyData = (JObject)payload.Data;
-                        _sessionId = readyData["session_id"]!.ToString();
-                        _resumeGatewayUrl = payload.Data["resume_gateway_url"] + $"/?v={GatewayVersion}&encoding=json";
-                        Dev.Log($"READY received, session ID: {_sessionId}");
+                        _sessionId = GetElementValue(payload.D!.Value, "session_id").ToString();
+                        _resumeGatewayUrl = GetElementValue(payload.D!.Value, "resume_gateway_url").ToString();
+                        Dev.Log($"[GW] READY received, session ID: {_sessionId}");
                         break;
                     case "RESUMED":
-                        Dev.Log("Gateway resumed (from dispatch)", ConsoleColor.Green);
+                        Dev.Log("[GW] Successfully resumed", ConsoleColor.Green);
                         break;
                     case "MESSAGE_CREATE":
-                        var messageCreated = Deserialize<Message>(payload.Data);
+                        var messageCreated = DeserializeWithNewtonsoft<Message>(payload.D!.Value);
+                        var (maxCachedMessages, span) = _bot.CacheManager.Messages;
+                        if (maxCachedMessages > 0)
+                        {
+                            messageCreated._expiration = DateTime.UtcNow.Add(span);
+                            if (_bot._cachedMessages.Count == maxCachedMessages)
+                            {
+                                var oldest = _bot._cachedMessages.OrderBy(m => m.Timestamp).First();
+                                _bot._cachedMessages.Remove(oldest);
+                            }
+                            _bot._cachedMessages.Add(messageCreated);
+                        }
                         OnMessageCreate?.Invoke(this, messageCreated);
                         break;
                 }
+
                 break;
 
             case 1: // Heartbeat request
-                Dev.Log("Received heartbeat request");
+                Dev.Log("[GW] HEARTBEAT request received");
                 await SendHeartbeatAsync();
                 break;
             
-            case 6: // Resume
-                Dev.Log("Gateway resumed", ConsoleColor.Green);
-                break;
-            
             case 7: // Reconnect
-                Dev.Log("Reconnected requested - attempting reconnect with RESUME", ConsoleColor.Yellow);
-                await ConnectAsync(Opcode.Resume);
+                Dev.Log("[GW] RECONNECT request received - resuming session", ConsoleColor.Yellow);
+                await ConnectAsync(true);
                 break;
 
             case 9: // Invalid Session
-                var resumable = payload.Data.Value<bool>();
-                Dev.Log($"Invalid session received from dispatch, resumable: {resumable}", ConsoleColor.Red);
+                var resumable = GetElementValue(payload.D!.Value, "d").GetBoolean();
+                Dev.Log($"[GW] INVALID SESSION received, resumable: {resumable}", ConsoleColor.Red);
                 if (resumable)
-                    await ConnectAsync(Opcode.Resume);
+                    await ConnectAsync(true);
                 else
-                    await ConnectAsync(Opcode.Identify);
+                {
+                    ResetCoreValues();
+                    await ConnectAsync(false);
+                }
+                break;
+            
+            case 10: // Hello
+                if (_identifyRequired)
+                {
+                    _heartbeatInterval = GetElementValue(payload.D!.Value, "heartbeat_interval") .GetInt32();
+                    Dev.Log($"[GW] HELLO received, heartbeat interval set ({_heartbeatInterval}ms)");
+                    await SendIdentifyAsync();
+                    _identifyRequired = false;
+                }
+                else
+                    Dev.Log("[GW] HELLO received - IDENTIFY not required for RESUME (continuing)");
                 break;
 
             case 11: // Heartbeat ACK
-                Dev.Log("Heartbeat ACK received");
+                Dev.Log("[GW] HEARTBEAT ACK received");
                 _heartbeatResponse = true;
                 break;
 
@@ -385,29 +452,14 @@ public sealed class Gateway
 }
 
 // Represents a Gateway payload.
-internal record GatewayPayload
+public sealed record GatewayPayload(int Op, JsonElement? D, ulong? S, string? T)
 {
-    [JsonProperty("op")]
-    internal int Op { get; set; }
-
-    [JsonProperty("d")]
-    internal JToken Data { get; set; }
-
-    [JsonProperty("t")]
-    internal string EventName { get; set; }
-
-    [JsonProperty("s")]
-    internal ulong? Sequence { get; set; }
-}
-
-internal static class Dev
-{
-    internal static void Log(string message, ConsoleColor color = ConsoleColor.White, bool timestamp = true)
+    public static GatewayPayload FromJson(JsonElement root)
     {
-        if (Environment.GetEnvironmentVariable("##set_logging##") is null) return;
-        var m = timestamp ? $"[{DateTime.Now:MM-dd-yyyy HH:mm:ss.fff}] {message}" : message;
-        Console.WriteLine(m, color);
-        Console.ResetColor();
+        int op = root.GetProperty("op").GetInt32();
+        JsonElement? d = root.TryGetProperty("d", out var dVal) ? dVal : null;
+        ulong? s = root.TryGetProperty("s", out var sVal) && sVal.ValueKind != JsonValueKind.Null ? sVal.GetUInt64() : null;
+        string? t = root.TryGetProperty("t", out var tVal) && tVal.ValueKind != JsonValueKind.Null ? tVal.GetString() : null;
+        return new GatewayPayload(op, d, s, t);
     }
 }
-

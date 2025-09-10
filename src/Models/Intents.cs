@@ -7,6 +7,7 @@ namespace Discord.Models;
 [Flags]
 public enum Intents : long
 {
+    None = 0,
     Guilds = 1L << 0,
     GuildMembers = 1L << 1,
     GuildModeration = 1L << 2,
