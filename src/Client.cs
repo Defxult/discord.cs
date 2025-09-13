@@ -12,6 +12,9 @@ public class Bot
     /// The bot authentication token. 
     /// </summary>
     public readonly string Token;
+    
+    public IReadOnlyCollection<Guild> Guilds => _guilds;
+    internal HashSet<Guild> _guilds = [];
 
     public int ShardId { get; }
 
@@ -27,6 +30,8 @@ public class Bot
 
     public DiscordGatewayClient Events => _client;
     private readonly DiscordGatewayClient _client;
+    
+    internal Timer _messageCacheTimer;
 
     public Bot(string token, Intents intents, int shardId = 0, CacheManager? cacheManager = null)
     {
@@ -35,8 +40,13 @@ public class Bot
         _client = new DiscordGatewayClient(this, token, intents);
         _rest = new Rest(this);
         CacheManager = cacheManager ?? CacheManager.Default;
+        _messageCacheTimer = new Timer(state =>
+        {
+            if (_cachedMessages.Count > 0)
+                _cachedMessages.RemoveAll(m => m._expiration >= DateTime.UtcNow);
+        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
     }
-
+    
     /// <summary>
     /// Updates the bot's presence.
     /// </summary>

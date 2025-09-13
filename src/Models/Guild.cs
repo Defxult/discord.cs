@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Data;
+using System.Text.Json;
 using Discord.Utility;
 using Discord.Net;
 using Newtonsoft.Json;
@@ -27,37 +28,254 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Guild avatar.
     /// </summary>
-    public Media? Icon { get; internal set; }
-
+    public Media? Icon
+    {
+        get
+        {
+            if (_icon is { } hash)
+                return new Media(hash, $"/icons/{Id}/{hash}");
+            return null;
+        }
+    }
+    [JsonProperty("icon")] internal string? _icon;
+    
+    /// <summary>
+    /// Guild splash.
+    /// </summary>
+    public Media? Splash
+    {
+        get
+        {
+            if (_splash is { } hash)
+                return new Media(hash, $"/splashes/{Id}/{hash}");
+            return null;
+        }
+    }
+    [JsonProperty("splash")] internal string? _splash;
+    
+    /// <summary>
+    /// Guild splash.
+    /// </summary>
+    public Media? DiscoverySplash
+    {
+        get
+        {
+            if (_discoverySplash is { } hash)
+                return new Media(hash, $"/discovery-splashes/{Id}/{hash}");
+            return null;
+        }
+    }
+    [JsonProperty("discovery_splash")] internal string? _discoverySplash;
+    
     /// <summary>
     /// The guild owners ID.
     /// </summary>
     [JsonProperty("owner_id")]
     public ulong OwnerId { get; internal set; }
+    
+    /// <summary>
+    /// ID of the AFK channel.
+    /// </summary>
+    [JsonProperty("afk_channel_id")]
+    public ulong? AfkChannelId { get; internal set; }
+    
+    /// <summary>
+    /// AFk timeout in seconds.
+    /// </summary>
+    [JsonProperty("afk_timeout")]
+    public int AfkTimeout { get; internal set; }
+    
+    /// <summary>
+    /// If the guild widget is enabled.
+    /// </summary>
+    [JsonProperty("widget_enabled")]
+    public bool WidgetEnabled { get; internal set; }
+    
+    /// <summary>
+    /// The channel ID that the widget will generate an invite to, or <c>null</c> if set to no invite.
+    /// </summary>
+    [JsonProperty("widget_channel_id")]
+    public ulong WidgetChannelId { get; internal set; }
+    
+    /// <summary>
+    /// Verification level required for the guild.
+    /// </summary>
+    public GuildVerificationLevel VerificationLevel => (GuildVerificationLevel)_verificationLevel;
+    [JsonProperty("verification_level")] internal int _verificationLevel;
+    
+    /// <summary>
+    /// Default message notification level.
+    /// </summary>
+    public GuildMessageNotificationLevel DefaultMessageNotificationsLevel=> (GuildMessageNotificationLevel)_defaultMessageNotifications;
+    [JsonProperty("default_message_notifications")] internal int _defaultMessageNotifications;
+    
+    /// <summary>
+    /// Explicit content filter level.
+    /// </summary>
+    public GuildExplicitContentFilterLevel ExplicitContentFilterLevel => (GuildExplicitContentFilterLevel)_explicitContentFilter;
+    [JsonProperty("explicit_content_filter")] internal int _explicitContentFilter;
+    
+    /// <summary>
+    /// Roles in the guild.
+    /// </summary>
+    public IReadOnlyCollection<Role> Roles => _roles;
+    internal List<Role> _roles;
+    
+    /// <summary>
+    /// Custom guild emojis.
+    /// </summary>
+    public IReadOnlyCollection<Emoji> Emojis => _emojis;
+    [JsonProperty("emojis")] internal List<Emoji> _emojis;
+    
+    /// <summary>
+    /// Enabled guild features.
+    /// </summary>
+    public IReadOnlyCollection<GuildFeature> Features => ParseGuildFeatures(_features);
+    [JsonProperty("features")] internal List<string> _features;
+    
+    /// <summary>
+    /// Required MFA level for the guild.
+    /// </summary>
+    [JsonProperty("mfa_level")]
+    public GuildMfaLevel MfaLevel { get; internal set; }
+    
+    /// <summary>
+    /// ID of the channel where guild notices such as welcome messages and boost events are posted.
+    /// </summary>
+    [JsonProperty("system_channel_id")]
+    public ulong? SystemChannelId { get; internal set; }
 
+    /// <summary>
+    /// System channel flags.
+    /// </summary>
+    public IReadOnlyCollection<GuildSystemChannelFlags> SystemChannelFlags => Util.FromBitfield<GuildSystemChannelFlags>(_systemChannelFlags);
+    [JsonProperty("system_channel_flags")] internal int _systemChannelFlags;
+    
+    /// <summary>
+    /// ID of the channel where Community guilds can display rules and/or guidelines.
+    /// </summary>
+    [JsonProperty("rules_channel_id")]
+    public ulong? RulesChannelId { get; internal set; }
+    
+    /// <summary>
+    /// Maximum number of presences for the guild (<c>null</c> is always returned, apart from the largest of guilds)
+    /// </summary>
+    [JsonProperty("max_presences")]
+    public int? MaxPresences { get; internal set; }
+    
+    /// <summary>
+    /// The maximum number of members for the guild.
+    /// </summary>
+    [JsonProperty("max_members")]
+    public int? MaxMembers { get; internal set; }
+    
+    /// <summary>
+    /// The vanity URL code for the guild.
+    /// </summary>
+    [JsonProperty("vanity_url_code")]
+    public string? VanityUrlCode { get; internal set; }
+    
+    /// <summary>
+    /// Description of the guild.
+    /// </summary>
+    [JsonProperty("description")]
+    public string? Description { get; internal set; }
+    
+    /// <summary>
+    /// Guild banner.
+    /// </summary>
+    public Media? Banner
+    {
+        get
+        {
+            if (_banner is { } hash)
+                return new Media(hash, $"/banners/{Id}/{hash}");
+            return null;
+        }
+    }
+    [JsonProperty("banner")] internal string? _banner;
+    
+    /// <summary>
+    /// Server boost level.
+    /// </summary>
+    public GuildPremiumTier PremiumTier => (GuildPremiumTier)_premiumTier;
+    [JsonProperty("premium_tier")]  internal int _premiumTier;
+    
+    /// <summary>
+    /// Number of boosts the guild currently has.
+    /// </summary>
+    [JsonProperty("premium_subscription_count")]
+    public int PremiumSubscriptionCount { get; internal set; }
+
+    /// <summary>
+    /// The preferred locale of a Community guild.
+    /// </summary>
+    public Locale Locale => ParseLocale(_locale);
+    [JsonProperty("preferred_locale")]  internal string _locale;
+    
+    /// <summary>
+    /// ID of the channel where admins and moderators of Community guilds receive notices from Discord.
+    /// </summary>
+    [JsonProperty("public_updates_channel_id")]
+    public ulong? PublicUpdatesChannelId { get; internal set; }
+    
+    /// <summary>
+    /// Maximum number of users in a video channel.
+    /// </summary>
+    [JsonProperty("max_video_channel_users")]
+    public int? MaxVideoChannelUsers { get; internal set; }
+    
+    /// <summary>
+    /// Maximum number of users in a video channel.
+    /// </summary>
+    [JsonProperty("max_stage_video_channel_users")]
+    public int? MaxStageVideoChannelUsers { get; internal set; }
+    
+    /// <summary>
+    /// The welcome screen of a Community guild, shown to new members.
+    /// </summary>
+    [JsonProperty("welcome_screen")]
+    public WelcomeScreen? WelcomeScreen { get; internal set; }
+    
+    /// <summary>
+    /// Guild NSFW level.
+    /// </summary>
+    [JsonProperty("nsfw_level")]
+    public GuildNsfwLevel NsfwLevel { get; internal set; }
+    
+    /// <summary>
+    /// Custom guild stickers.
+    /// </summary>
+    public IReadOnlyCollection<GuildSticker> Stickers => _stickers ?? [];
+    [JsonProperty("stickers")] private List<GuildSticker>? _stickers;
+
+    /// <summary>
+    /// Whether the guild has the boost progress bar enabled.
+    /// </summary>
+    [JsonProperty("premium_progress_bar_enabled")]
+    public bool PremiumProgressBarEnabled { get; internal set; }
+    
+    /// <summary>
+    /// ID of the channel where admins and moderators of Community guilds receive safety alerts from Discord.
+    /// </summary>
+    [JsonProperty("safety_alerts_channel_id")]
+    public ulong? SafetyAlertsChannelId { get; internal set; }
+    
+    /// <summary>
+    /// Incidents data for the guild.
+    /// </summary>
+    [JsonProperty("incidents_data")]
+    public Incidents? IncidentsData { get; }
 
     #endregion
 
     [JsonConstructor]
-    internal Guild(
-        ulong id,
-        string? icon,
-        string? splash,
-        string? discovery_splash,
-        HashSet<string> features,
-        int system_channel_flags,
-        string? banner,
-        string preferred_locale,
-        List<Member>? members,
-        List<JSON> channels,
-        List<JSON> threads,
-
-        // Custom JsonConstructor value.
-        bool _fromGateway = false
-    )
+    internal Guild(ulong id, List<Role> roles, bool _fromGateway = false)
     {
         Id = id;
-        
+        foreach (var role in roles)
+            role.GuildId = id;
+        _roles = roles;
     }
     
     public override bool Equals(object? other) => other is Guild guild && Equals(guild);
@@ -65,14 +283,14 @@ public class Guild : IEquatable<Guild>
     public override int GetHashCode() => Id.GetHashCode();
 
     #region Private
-
-    internal void Update(JSON data)
+    
+    internal void Update(JsonElement element)
     {
         throw new NotImplementedException();
     }
     
 
-    internal static HashSet<GuildFeature> ParseFeatures(HashSet<string> features)
+    private static HashSet<GuildFeature> ParseGuildFeatures(ICollection<string> features)
     {
         HashSet<GuildFeature> fts = [];
         foreach (GuildFeature e in Enum.GetValues(typeof(GuildFeature)))
@@ -80,15 +298,6 @@ public class Guild : IEquatable<Guild>
                 if (f.Equals(e.GetDescription()))
                     fts.Add(e);
         return fts;
-    }
-
-    private static List<GuildSystemChannelFlags> ParseSystemChannelFlags(int value)
-    {
-        List<GuildSystemChannelFlags> flags = [];
-        foreach (GuildSystemChannelFlags flag in Enum.GetValues(typeof(GuildSystemChannelFlags)))
-            if ((value & (int)flag) == (int)flag)
-                flags.Add(flag);
-        return flags;
     }
 
     private static Locale ParseLocale(string value)
@@ -252,7 +461,7 @@ public struct GuildEdit
     /// </summary>
     public readonly GuildEdit SetSystemChannelFlags(IEnumerable<GuildSystemChannelFlags> flags)
     {
-        int value = 0;
+        var value = 0;
         foreach (var flag in flags)
             value |= (int)flag;
         _payload["system_channel_flags"] = value;
@@ -553,6 +762,85 @@ public struct GuildEdit
 //     public bool Equals(ScheduledEvent? other) => Id == other?.Id;
 //     public override int GetHashCode() => Id.GetHashCode();
 // }
+
+/// <summary>
+/// Represents incidents that occurred in a <see cref="Guild"/>.
+/// </summary>
+public record Incidents
+{
+    /// <summary>
+    /// When invites get enabled again.
+    /// </summary>
+    [JsonProperty("invites_disabled_until")]
+    public DateTime? InvitesDisabledUntil { get; }
+    
+    /// <summary>
+    /// When direct messages get enabled again.
+    /// </summary>
+    [JsonProperty("dms_disabled_until")]
+    public DateTime? DmDisabledUntil { get; }
+    
+    /// <summary>
+    /// When the direct message spam was detected.
+    /// </summary>
+    [JsonProperty("dm_spam_detected_at")]
+    public DateTime? DmSpamDetectedAt{ get; }
+    
+    /// <summary>
+    /// When the raid was detected.
+    /// </summary>
+    [JsonProperty("raid_detected_at")]
+    public DateTime? RaidDetectedAt{ get; }
+}
+
+/// <summary>
+/// Represents a <see cref="Guild"/> welcome screen.
+/// </summary>
+public record WelcomeScreen
+{
+    /// <summary>
+    /// Guild description shown in the welcome screen.
+    /// </summary>
+    [JsonProperty("description")]
+    public string? Description { get; }
+    
+    /// <summary>
+    /// The channels shown in the welcome screen.
+    /// </summary>
+    [JsonProperty("welcome_channels")]
+    public IReadOnlyCollection<WelcomeScreenChannel> Channels { get; }
+}
+
+/// <summary>
+/// Represents a <see cref="WelcomeScreen"/> channel.
+/// </summary>
+public record WelcomeScreenChannel
+{
+    /// <summary>
+    /// Channel ID.
+    /// </summary>
+    [JsonProperty("channel_id")]
+    public ulong ChannelId { get; }
+
+    /// <summary>
+    /// Channel description.
+    /// </summary>
+    [JsonProperty("description")]
+    public string Description { get; }
+    
+    /// <summary>
+    /// Emoji ID, if the emoji is custom.
+    /// </summary>
+    [JsonProperty("emoji_id")]
+    public ulong? EmojiId { get; }
+    
+    /// <summary>
+    /// Emoji name if custom, the Unicode character if it's standard.
+    /// </summary>
+    [JsonProperty("emoji_name")]
+    public string? EmojiName { get; }
+}
+
 
 /// <summary>
 /// Represents the status of a <see cref="ScheduledEvent"/>.

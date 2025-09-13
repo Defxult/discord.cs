@@ -55,9 +55,10 @@ public sealed class DiscordGatewayClient
     internal string? _sessionId;
     internal string? _resumeGatewayUrl;
     internal const string UriParameters = "/?v=10&encoding=json";
+    internal ClientWebSocket _ws;
+    internal bool _userTerminated;
     
     private Bot _bot;
-    internal ClientWebSocket _ws;
     private Intents _intents;
     private readonly string _token;
     private ulong? _lastSequence;
@@ -78,6 +79,7 @@ public sealed class DiscordGatewayClient
         _identifyRequired = true;
         _cts = new CancellationTokenSource();
         _ws = new ClientWebSocket();
+        _userTerminated = false;
     }
 
     // Gracefully closes the WebSocket connection and sets a new WebSocket object and CancellationTokenSource.
@@ -93,7 +95,7 @@ public sealed class DiscordGatewayClient
         }
         catch (Exception e)
         {
-            Dev.Log($"[ERROR, RefreshWebSocket] {e.Message}]");
+            Dev.Log($"[ERROR, RefreshWebSocket] {e.Message}");
         }
         finally
         {
@@ -152,6 +154,7 @@ public sealed class DiscordGatewayClient
         _identifyRequired = true;
     }
 
+    // Keeps the connection alive with Discords required heartbeats.
     private async Task HeartbeatLoopAsync()
     {
         Dev.Log("[GW] Heartbeat loop started");
@@ -238,6 +241,10 @@ public sealed class DiscordGatewayClient
             case 4014:
                 throw new DisallowedIntentsException(
                     "A disallowed intent for a Gateway Intent was sent. An intent may have been specified that you have not enabled or are not approved for");
+            default:
+                Dev.Log($"[GW] WebSocket closed with unhandled close code ({closeCode}:WS state {_ws.State}) - attempting resume");
+                await ConnectAsync(true);
+                break;
         }
     }
 
@@ -366,6 +373,7 @@ public sealed class DiscordGatewayClient
     internal static T DeserializeWithNewtonsoft<T>(JsonElement element)
     {
         string json = element.GetRawText();
+        //Console.WriteLine(json + "\n\n\n");
         return JsonConvert.DeserializeObject<T>(json)!;
     }
     
@@ -400,6 +408,12 @@ public sealed class DiscordGatewayClient
                             _bot._cachedMessages.Add(messageCreated);
                         }
                         OnMessageCreate?.Invoke(this, messageCreated);
+                        break;
+                    
+                    
+                    case "GUILD_CREATE":
+                        var guildCreated = DeserializeWithNewtonsoft<Guild>(payload.D!.Value);
+                        _bot._guilds.Add(guildCreated);
                         break;
                 }
 

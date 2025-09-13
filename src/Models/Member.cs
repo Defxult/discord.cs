@@ -9,26 +9,20 @@ namespace Discord.Models;
 public class Member : IEquatable<Member>
 {
     /// <summary>
-    /// The member's ID. This is a shortcut that is accessing the value from the <see cref="User"/> property. If said
-    /// property is <c>null</c> this will also be.
-    /// </summary>
-    public ulong? Id => User?.Id;
-
-    /// <summary>
     /// User object for the member. Contains information such as their ID, username, avatar, etc.
     /// </summary>
     [JsonProperty("user")]
     public User? User { get; internal set; }
 
     /// <summary>
-    /// The member's guild nickname.
+    /// The user's guild nickname.
     /// </summary>
     [JsonProperty("nick")]
     public string? Nickname { get; internal set; }
 
-    /// <summary>
-    /// The member's guild avatar. For their user avatar, use <see cref="Models.User.Avatar"/>.
-    /// </summary>
+    // /// <summary>
+    // /// The user's avatar specific to this guild. For their global avatar, use <see cref="Models.User.Avatar"/>.
+    // /// </summary>
     // public Media? Avatar
     // {
     //     get
@@ -38,8 +32,8 @@ public class Member : IEquatable<Member>
     //         return null;
     //     }
     // }
-    // [JsonProperty("avatar")]
-    // private string? _avatarHash;
+    [JsonProperty("avatar")]
+    private string? _avatarHash;
 
     /// <summary>
     /// All roles applied to the member.
@@ -94,6 +88,12 @@ public class Member : IEquatable<Member>
     public DateTime? TimedOutUntil { get; internal set; }
 
     #region API Separated
+    
+    /// <summary>
+    /// The member's ID. This is a shortcut that is accessing the value from the <see cref="User"/> property. If said
+    /// property is <c>null</c> this will also be.
+    /// </summary>
+    public ulong? Id => User?.Id;
 
     /// <summary>
     /// The guild this member belongs to.

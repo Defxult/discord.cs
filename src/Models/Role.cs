@@ -11,13 +11,7 @@ public class Role : IEquatable<Role>
     /// <summary>
     /// Role ID.
     /// </summary>
-    [JsonProperty("id")]
     public ulong Id { get; }
-    
-    /// <summary>
-    /// The guild this role belongs to.
-    /// </summary>
-    // public Guild Guild { get; internal set; } TODO
 
     /// <summary>
     /// Role name.
@@ -28,10 +22,11 @@ public class Role : IEquatable<Role>
     /// <summary>
     /// Role color.
     /// </summary>
-    public Color? Color;
+    [JsonProperty("colors")]
+    public RoleColor? Color { get; internal set; }
 
     /// <summary>
-    ///  Whether the role should be displayed separately in the sidebar.
+    /// Whether the role should be displayed separately in the sidebar.
     /// </summary>
     [JsonProperty("hoist")]
     public bool Hoist { get; internal set; }
@@ -39,13 +34,22 @@ public class Role : IEquatable<Role>
     /// <summary>
     /// The role icon.
     /// </summary>
-    public Media? Icon { get; internal set; }
+    public Media? Icon
+    {
+        get
+        {
+            if (_icon is { } hash)
+                return new Media(hash, $"/role-icons/{Id}/{hash}");
+            return null;
+        }
+    }
+    [JsonProperty("icon")] internal string? _icon;
 
     /// <summary>
     /// The role unicode emoji.
     /// </summary>
     [JsonProperty("unicode_emoji")]
-    public string? UnicodeEmoji;
+    public string? UnicodeEmoji { get; internal set; }
 
     /// <summary>
     /// Position of this role.
@@ -62,7 +66,7 @@ public class Role : IEquatable<Role>
     /// Whether this role is managed by an integration.
     /// </summary>
     [JsonProperty("managed")]
-    public bool Managed { get; init; }
+    public bool Managed { get; }
 
     /// <summary>
     /// Whether the role is mentionable.
@@ -73,45 +77,44 @@ public class Role : IEquatable<Role>
     /// <summary>
     /// The tags this role has.
     /// </summary>
-    public RoleTag? Tags { get; init; }
+    public RoleTag? Tags { get; internal set; }
 
     /// <summary>
-    /// Your bot instance.
+    /// The roles flags.
     /// </summary>
-    // public Bot? Bot => Guild.Bot; TODO
+    public IReadOnlyCollection<RoleFlag> Flags => Util.FromBitfield<RoleFlag>(_flags);
+    [JsonProperty("flags")] internal int _flags;
 
-    #region API Separated
-
+    #region CUSTOM
+    
     /// <summary>
-    /// Members who currently have this role.
+    /// ID of the guild this role belongs to.
     /// </summary>
-    // public IReadOnlyCollection<Member> Members => Guild.Members.Where(m => m.Roles.Contains(this)).ToHashSet(); TODO
-
-    /// <summary>
-    /// Whether this role is the default role, aka the <c>@everyone</c> role.
-    /// </summary>
-    // public bool IsDefault => Id == Guild.Id; TODO
+    public ulong GuildId { get; internal set; } // Set in Guild constructor
 
     /// <summary>
     /// Whether this role is the "Nitro Booster" role.
     /// </summary>
-    public readonly bool IsPremiumSubscriber;
+    public bool PremiumSubscriber { get; }
+
+    /// <summary>
+    /// Whether this is the @everyone role.
+    /// </summary>
+    public bool Default => Id == GuildId;
 
     /// <summary>
     /// Mention the role.
     /// </summary>
-    // public string Mention => IsDefault ? Markdown.MentionEveryone : Markdown.MentionRole(Id); TODO
+    public string Mention => Default ? Markdown.MentionEveryone : Markdown.MentionRole(Id);
 
     #endregion
 
     [JsonConstructor]
-    internal Role(int color, string? icon, ulong permissions, JSON? tags)
+    internal Role(ulong id, ulong permissions, JSON? tags)
     {
-        Color = color == 0 ? null : new Color(color);
-        if (icon != null)
-            Icon = new Media(icon, $"/role-icons/{Id}/{icon}");
+        Id = id;
         Permissions = new Permissions(permissions);
-
+        
         /*
          * The API handles role tag values so weird:
          * 
@@ -120,28 +123,54 @@ public class Role : IEquatable<Role>
          * 
          * Idk why they couldn't just set boolean values to simply true or false but OK...
          */
-        if (tags != null)
-        {
-            bool hasBotId = tags.TryGetValue("bot_id", out var bId);
-            bool hasIntId = tags.TryGetValue("integration_id", out var intId);
-            bool isPreSub = tags.ContainsKey("premium_subscriber");
-
-            ulong? botId = hasBotId ? Convert.ToUInt64(bId) : null;
-            ulong? integrationId = hasIntId ? Convert.ToUInt64(intId) : null;
-            Tags = new RoleTag(botId, integrationId, isPreSub);
-        }
-        IsPremiumSubscriber = Tags?.IsPremiumSubscriber ?? false;
+        if (tags is not null)
+            Tags = RoleTag.Parse(tags);
+        PremiumSubscriber = Tags?.IsPremiumSubscriber ?? false;
     }
     
     public override bool Equals(object? other) => other is Role role && Equals(role);
     public bool Equals(Role? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
+}
 
+/// <summary>
+/// Represents a <see cref="Role"/> flag.
+/// </summary>
+public enum RoleFlag
+{
     /// <summary>
-    /// Returns the roles name.
+    /// Members can select this role in an onboarding prompt.
     /// </summary>
-    public override string ToString() =>
-        Name;
+    InPrompt = 1 << 0
+}
+
+/// <summary>
+/// Represents a <see cref="Role"/> color.
+/// </summary>
+public record RoleColor
+{
+    /// <summary>
+    /// The primary color for the role.
+    /// </summary>
+    public int Primary;
+    
+    /// <summary>
+    /// The secondary color for the role, this will make the role a gradient between the other provided colors.
+    /// </summary>
+    public int? Secondary;
+    
+    /// <summary>
+    /// The tertiary color for the role, this will turn the gradient into a holographic style.
+    /// </summary>
+    public int? Tertiary;
+
+    [JsonConstructor]
+    internal RoleColor(int primary_color, int? secondary_color, int? tertiary_color)
+    {
+        Primary = primary_color;
+        Secondary = secondary_color;
+        Tertiary = tertiary_color;
+    }
 }
 
 /// <summary>
@@ -163,11 +192,45 @@ public record RoleTag
     /// Whether this is the guild's premium subscriber role, aka the "Nitro Booster" role.
     /// </summary>
     public readonly bool IsPremiumSubscriber;
+    
+    /// <summary>
+    /// ID of the role's subscription SKU and listing.
+    /// </summary>
+    public readonly ulong? SubscriptionListingId;
+    
+    /// <summary>
+    /// Whether this role is available for purchase.
+    /// </summary>
+    public readonly bool AvailableForPurchase;
+    
+    /// <summary>
+    /// Whether this role is a guild's linked role.
+    /// </summary>
+    public readonly bool GuildConnections;
 
-    internal RoleTag(ulong? botId, ulong? integrationId, bool isPremiumSub) 
+    internal RoleTag(ulong? botId, ulong? integrationId, bool isPremiumSub, ulong? subscriptionListingId, bool forPurchase, bool guildConnections) 
     {
         BotId = botId;
         IntegrationId = integrationId;
         IsPremiumSubscriber = isPremiumSub;
+        SubscriptionListingId = subscriptionListingId;
+        AvailableForPurchase = forPurchase;
+        GuildConnections = guildConnections;
+    }
+
+    internal static RoleTag Parse(JSON json)
+    {
+        bool hasBotId = json.TryGetValue("bot_id", out var bId);
+        bool hasIntId = json.TryGetValue("integration_id", out var intId);
+        bool isPreSub = json.ContainsKey("premium_subscriber");
+        bool hasSubListingId = json.TryGetValue("subscription_listing_id", out var subListingId);
+        bool forPurchase = json.ContainsKey("available_for_purchase");
+        bool guildConnections = json.ContainsKey("guild_connections");
+
+        ulong? botId = hasBotId ? Convert.ToUInt64(bId) : null;
+        ulong? integrationId = hasIntId ? Convert.ToUInt64(intId) : null;
+        ulong? subListId = hasSubListingId ? Convert.ToUInt64(subListingId) : null;
+        
+        return new RoleTag(botId, integrationId, isPreSub, subListId, forPurchase, guildConnections);
     }
 }
