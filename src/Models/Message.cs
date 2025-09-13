@@ -15,19 +15,19 @@ public class Message : IEquatable<Message>
     /// ID of the guild the message was sent in - unless it is an ephemeral message.
     /// </summary>
     [JsonProperty("guild_id")]
-    public ulong? GuildId { get; }
+    public ulong? GuildId { get; init; }
     
     /// <summary>
     /// The <see cref="Author"/> of this message but returns their <see cref="Models.Member"/> object instead. Will be
     /// <c>null</c> for ephemeral messages and messages from webhooks.
     /// </summary>
     [JsonProperty("member")]
-    public Member? Member { get; }
+    public Member? Member { get; init; }
 
     /// <summary>
     /// Users specifically mentioned in the message.
     /// </summary>
-    public IReadOnlyList<User> MentionedUsers => _mentions;
+    public IReadOnlyCollection<User> MentionedUsers => _mentions;
     [JsonProperty("mentions")] private List<User> _mentions = [];
 
     #endregion
@@ -36,13 +36,13 @@ public class Message : IEquatable<Message>
     /// ID of the message.
     /// </summary>
     [JsonProperty("id")]
-    public ulong Id { get; }
+    public ulong Id { get; init; }
     
     /// <summary>
     /// ID of the channel the message was sent in.
     /// </summary>
     [JsonProperty("channel_id")]
-    public ulong ChannelId { get; }
+    public ulong ChannelId { get; init; }
     
     /// <summary>
     /// Author of this message. If you need the <see cref="Models.Member"/> object instead, see <see cref="Member"/>.
@@ -61,10 +61,10 @@ public class Message : IEquatable<Message>
     /// When the message was sent.
     /// </summary>
     [JsonProperty("timestamp")]
-    public DateTime Timestamp { get; }
+    public DateTime Timestamp { get; init; }
     
     /// <summary>
-    /// When the message was last edited (or <c>null</c>, if never).
+    /// When the message was last edited, or <c>null</c>, if never.
     /// </summary>
     [JsonProperty("edited_timestamp")]
     public DateTime? EditedTimestamp { get; internal set; }
@@ -73,23 +73,36 @@ public class Message : IEquatable<Message>
     /// Whether this was a TTS message.
     /// </summary>
     [JsonProperty("tts")]
-    public bool Tts { get; }
+    public bool Tts { get; init; }
 
     /// <summary>
     /// Whether this message mentions everyone.
     /// </summary>
     [JsonProperty("mention_everyone")]
-    public bool EveryoneMentioned { get; }
+    public bool EveryoneMentioned { get; init; }
     
     /// <summary>
     /// Roles specifically mentioned in this message.
     /// </summary>
-    //public IReadOnlyList<Role> MentionedRoles => _roleMentions;
+    //public IReadOnlyList<Role> MentionedRoles => _roleMentions; TODO
     [JsonProperty("mention_roles")] private List<ulong> _mentionedRoleIds = [];
-    
-    
 
+    #region CUSTOM
+    
+    /// <summary>
+    /// Your bot instance.
+    /// </summary>
+    public Bot? Bot { get; internal set; }
+
+    /// <summary>
+    /// Guild this message belongs to. Can be <c>null</c> if it's ephemeral or direct message.
+    /// </summary>
+    public Guild? Guild => GuildId.HasValue ? Bot?.GetGuild(GuildId.Value) : null; 
+    
     internal DateTime _expiration;
+
+    #endregion
+    
     
     public bool Equals(Message? other)
     {

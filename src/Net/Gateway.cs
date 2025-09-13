@@ -396,6 +396,9 @@ public sealed class DiscordGatewayClient
                         break;
                     case "MESSAGE_CREATE":
                         var messageCreated = DeserializeWithNewtonsoft<Message>(payload.D!.Value);
+                        messageCreated.Bot = _bot;
+                        
+                        // Handle caching
                         var (maxCachedMessages, span) = _bot.CacheManager.Messages;
                         if (maxCachedMessages > 0)
                         {
