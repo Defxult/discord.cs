@@ -5,9 +5,21 @@
 </p>
 
 <p align="center">Decided to try and tackle this for fun. We'll see where it goes 😛</p>
-<p align="center">Discord: https://discord.gg/Xnh5uFyXfT</p>
+<p align="center">Discord: https://discord.gg/6TNJHcGRYv</p>
 
 <p align="center">
     <img src="https://img.shields.io/static/v1?label=version&style=for-the-badge&message=0.0.0&color=c869ff">
     <!-- <a href="https://google.com"><img src="https://img.shields.io/static/v1?label=guide&style=for-the-badge&message=gitbook&color=5865f2"></a> -->
 </p>
+
+## Basic Usage
+```csharp
+// The following simply brings your bot online.
+using Discord;
+using Discord.Models;
+
+var bot = new Bot("token", Intents.Default);
+
+await bot.RunAsync();    
+await Task.Delay(-1);
+```
