@@ -269,6 +269,15 @@ public class Guild : IEquatable<Guild>
 
     #endregion
 
+    #region CUSTOM
+    
+    /// <summary>
+    /// Your bot instance.
+    /// </summary>
+    public Bot? Bot {  get; internal set; } // Set in GUILD_CREATE
+    
+    #endregion
+    
     [JsonConstructor]
     internal Guild(ulong id, List<Role> roles, bool _fromGateway = false)
     {
@@ -281,15 +290,25 @@ public class Guild : IEquatable<Guild>
     public override bool Equals(object? other) => other is Guild guild && Equals(guild);
     public bool Equals(Guild? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
+    
+    #region SCHEDULED EVENT
 
-    #region Private
+    /// <summary>
+    /// Retrieves a list of scheduled events for the guild.
+    /// </summary>
+    /// <returns>All scheduled events for the guild.</returns>
+    public async Task<IReadOnlyCollection<ScheduledEvent>> ScheduledEventsAsync() =>
+        await Bot!._rest.ListScheduledEventsForGuildAsync(Id);
+    
+    #endregion
+
+    #region PRIVATE
     
     internal void Update(JsonElement element)
     {
         throw new NotImplementedException();
     }
     
-
     private static HashSet<GuildFeature> ParseGuildFeatures(ICollection<string> features)
     {
         HashSet<GuildFeature> fts = [];
@@ -658,110 +677,263 @@ public struct GuildEdit
 //     public override int GetHashCode() => Id.GetHashCode();
 // }
 
-// /// <summary>
-// /// Represents a guilds scheduled event.
-// /// </summary>
-// public class ScheduledEvent : IEquatable<ScheduledEvent>
-// {
-//     /// <summary>
-//     /// Scheduled event ID.
-//     /// </summary>
-//     [JsonProperty("id")]
-//     public ulong Id { get; init; }
-//     
-//     /// <summary>
-//     /// The guild the event belongs to.
-//     /// </summary>        
-//     public Guild Guild { get; internal set; }
-//
-//     /// <summary>
-//     /// The channel ID in which the scheduled event will be hosted, or <c>null</c> if the scheduled
-//     /// events entity type is <see cref="ScheduledEventEntityType.External"/>.
-//     /// </summary>
-//     [JsonProperty("channel_id")]
-//     public ulong? ChannelId { get; internal set; }
-//
-//     /// <summary>
-//     /// The name of the scheduled event.
-//     /// </summary>
-//     [JsonProperty("name")]
-//     public string Name { get; internal set; } = string.Empty;
-//
-//     /// <summary>
-//     /// The description of the scheduled event.
-//     /// </summary>
-//     [JsonProperty("description")]
-//     public string? Description { get; internal set; }
-//
-//     /// <summary>
-//     /// The time the scheduled event will start.
-//     /// </summary>
-//     [JsonProperty("scheduled_start_time")]
-//     public DateTime ScheduledStartTime { get; internal set; }
-//
-//     /// <summary>
-//     /// The time the scheduled event will end.
-//     /// </summary>
-//     [JsonProperty("scheduled_end_time")]
-//     public DateTime? ScheduledEndTime { get; internal set; }
-//
-//     /// <summary>
-//     /// The privacy level of the scheduled event.
-//     /// </summary>        
-//     [JsonProperty("privacy_level")]
-//     public ScheduledEventPrivacyLevel PrivacyLevel { get; internal set; }
-//
-//     /// <summary>
-//     /// The status of the scheduled event.
-//     /// </summary>
-//     [JsonProperty("status")]
-//     public ScheduledEventStatus Status { get; internal set; }
-//
-//     /// <summary>
-//     /// The type of the scheduled event.
-//     /// </summary>        
-//     [JsonProperty("entity_type")]
-//     public ScheduledEventEntityType EntityType { get; internal set; }
-//
-//     /// <summary>
-//     /// The ID of an entity associated with a guild scheduled event.
-//     /// </summary>        
-//     [JsonProperty("entity_id")]
-//     public ulong? EntityId { get; internal set; }
-//
-//     /// <summary>
-//     /// Where the event will take place.
-//     /// </summary>        
-//     public string? Location { get; internal set; }
-//
-//     /// <summary>
-//     /// The ID of the user that created the scheduled event.
-//     /// </summary>        
-//     [JsonProperty("creator_id")]
-//     public ulong? CreatorId { get; init; }
-//
-//     /// <summary>
-//     /// The cover image of the scheduled event.
-//     /// </summary>        
-//     public Media? Image { get; internal set; }
-//
-//     [JsonConstructor]
-//     internal ScheduledEvent(ulong id, JSON? entity_metadata, string? image)
-//     {
-//         if (entity_metadata != null)
-//         {
-//             entity_metadata.TryGetValue("location", out object? location);
-//             if (location != null)
-//                 Location = Convert.ToString(location);
-//         }
-//         if (image != null)
-//             Image = new Media(image, $"/guild-events/{id}/{image}");
-//     }
-//     
-//     public override bool Equals(object? other) => other is ScheduledEvent scheduledEvent && Equals(scheduledEvent);
-//     public bool Equals(ScheduledEvent? other) => Id == other?.Id;
-//     public override int GetHashCode() => Id.GetHashCode();
-// }
+/// <summary>
+/// Represents a guilds scheduled event.
+/// </summary>
+public class ScheduledEvent : IEquatable<ScheduledEvent>
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event
+    
+    /// <summary>
+    /// Scheduled event ID.
+    /// </summary>
+    public ulong Id { get; }
+    
+    /// <summary>
+    /// Guild ID the event belongs to.
+    /// </summary>        
+    [JsonProperty("guild_id")]
+    public ulong GuildId { get; init; }
+
+    /// <summary>
+    /// The channel ID in which the scheduled event will be hosted, or <c>null</c> if the scheduled
+    /// events entity type is <see cref="ScheduledEventEntityType.External"/>.
+    /// </summary>
+    [JsonProperty("channel_id")]
+    public ulong? ChannelId { get; init; }
+    
+    /// <summary>
+    /// ID of the user that created the scheduled event.
+    /// </summary>        
+    [JsonProperty("creator_id")]
+    public ulong? CreatorId { get; init; }
+
+    /// <summary>
+    /// Name of the scheduled event.
+    /// </summary>
+    [JsonProperty("name")]
+    public string Name { get; init; } = string.Empty; 
+
+    /// <summary>
+    /// Description of the scheduled event.
+    /// </summary>
+    [JsonProperty("description")]
+    public string? Description { get; init; }
+
+    /// <summary>
+    /// Time the scheduled event will start.
+    /// </summary>
+    [JsonProperty("scheduled_start_time")]
+    public DateTime ScheduledStartTime { get; init; }
+
+    /// <summary>
+    /// Time the scheduled event will end.
+    /// </summary>
+    [JsonProperty("scheduled_end_time")]
+    public DateTime? ScheduledEndTime { get; init; }
+
+    /// <summary>
+    /// Privacy level of the scheduled event.
+    /// </summary>        
+    [JsonProperty("privacy_level")]
+    public ScheduledEventPrivacyLevel PrivacyLevel { get; init; }
+
+    /// <summary>
+    /// Status of the scheduled event.
+    /// </summary>
+    [JsonProperty("status")]
+    public ScheduledEventStatus Status { get; init; }
+
+    /// <summary>
+    /// The type of the scheduled event.
+    /// </summary>        
+    [JsonProperty("entity_type")]
+    public ScheduledEventEntityType EntityType { get; init; }
+
+    /// <summary>
+    /// ID of an entity associated with a guild scheduled event.
+    /// </summary>        
+    [JsonProperty("entity_id")]
+    public ulong? EntityId { get; init; }
+    
+    /// <summary>
+    /// User that created the scheduled event.
+    /// </summary>
+    [JsonProperty("creator")]
+    public User? Creator { get; init; }
+
+    /// <summary>
+    /// Where the event will take place.
+    /// </summary>        
+    public string? Location { get; }
+
+    /// <summary>
+    /// Cover image of the scheduled event.
+    /// </summary>        
+    public Media? Image { get; }
+    
+    /// <summary>
+    /// Number of users subscribed to the scheduled event
+    /// </summary>
+    [JsonProperty("user_count")]
+    public int UserCount { get; init; }
+    
+    /// <summary>
+    /// The definition for how often this event should recur.
+    /// </summary>
+    [JsonProperty("recurrence_rule")]
+    public RecurrenceRule? RecurrenceRule { get; init; }
+    
+    #region CUSTOM
+
+    /// <summary>
+    /// Your bot instance.
+    /// </summary>
+    public Bot? Bot { get; internal set; } // Set via Rest.ListScheduledEventsForGuildAsync().
+    
+    /// <summary>
+    /// Guild the event belongs to.
+    /// </summary>
+    public Guild? Guild => Bot?.GetGuild(GuildId);
+    
+    #endregion
+
+    [JsonConstructor]
+    internal ScheduledEvent(ulong id, JSON? entity_metadata, string? image)
+    {
+        Id = id;
+        if (entity_metadata != null)
+        {
+            entity_metadata.TryGetValue("location", out object? location);
+            if (location != null)
+                Location = Convert.ToString(location);
+        }
+        if (image != null)
+            Image = new Media(image, $"/guild-events/{Id}/{image}");
+    }
+    
+    public override bool Equals(object? other) => other is ScheduledEvent scheduledEvent && Equals(scheduledEvent);
+    public bool Equals(ScheduledEvent? other) => Id == other?.Id;
+    public override int GetHashCode() => Id.GetHashCode();
+}
+
+/// <summary>
+/// Represents a <see cref="Guild"/>'s <see cref="ScheduledEvent"/> recurrence rule.
+/// </summary>
+public record RecurrenceRule
+{
+    /// <summary>
+    /// Starting time of the recurrence interval.
+    /// </summary>
+    [JsonProperty("start")]
+    public DateTime Start { get; init; }
+    
+    /// <summary>
+    /// Ending time of the recurrence interval.
+    /// </summary>
+    [JsonProperty("end")]
+    public DateTime? End { get; init; }
+    
+    /// <summary>
+    /// How often the event occurs.
+    /// </summary>
+    [JsonProperty("frequency")]
+    public RecurrenceRuleFrequency Frequency { get; init; }
+    
+    /// <summary>
+    /// The spacing between the events, defined by <see cref="Frequency"/>. For example, frequency of
+    /// <see cref="RecurrenceRuleFrequency.Weekly"/> and an interval of 2 would be "every-other week".
+    /// </summary>
+    [JsonProperty("interval")]
+    public int Interval { get; init; }
+    
+    /// <summary>
+    /// Set of specific days within a week for the event to recur on.
+    /// </summary>
+    [JsonProperty("by_weekday")]
+    public IReadOnlyCollection<RecurrenceRuleFrequencyWeekday>? ByWeekday { get; init; }
+    
+    /// <summary>
+    /// List of specific days within a specific week (1-5) to recur on.
+    /// </summary>
+    [JsonProperty("by_n_weekday")]
+    public IReadOnlyCollection<RecurrenceRuleFrequencyNWeekday>? ByNWeekday { get; init; }
+    
+    /// <summary>
+    /// Set of specific months to recur on.
+    /// </summary>
+    [JsonProperty("by_month")]
+    public IReadOnlyCollection<RecurrenceRuleFrequencyMonth>? ByMonth { get; init; }
+    
+    /// <summary>
+    /// Set of specific dates within a month to recur on.
+    /// </summary>
+    [JsonProperty("by_month_day")]
+    public IReadOnlyCollection<int>? ByMonthDay { get; init; }
+    
+    /// <summary>
+    /// Set of days within a year to recur on (1-364).
+    /// </summary>
+    [JsonProperty("by_year_day")]
+    public IReadOnlyCollection<int>? ByYearDay { get; init; }
+    
+    /// <summary>
+    /// The total amount of times that the event is allowed to recur before stopping.
+    /// </summary>
+    [JsonProperty("count")]
+    public int? Count { get; init; }
+    
+}
+
+public enum RecurrenceRuleFrequency
+{
+    Yearly,
+    Monthly,
+    Weekly,
+    Daily
+}
+
+public enum RecurrenceRuleFrequencyWeekday
+{
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday
+}
+
+public enum RecurrenceRuleFrequencyMonth
+{
+    Jan = 1,
+    Feb,
+    Mar,
+    Apr,
+    May,
+    Jun,
+    Jul,
+    Aug,
+    Sep,
+    Oct,
+    Nov,
+    Dec
+}
+
+public record RecurrenceRuleFrequencyNWeekday
+{
+    /// <summary>
+    /// The week to reoccur on (1 - 5).
+    /// </summary>
+    [JsonProperty("n")]
+    public int Week { get; init; }
+    
+    /// <summary>
+    /// The day within the week to reoccur on.
+    /// </summary>
+    [JsonProperty("day")]
+    public RecurrenceRuleFrequencyWeekday Day { get; init; }
+}
 
 /// <summary>
 /// Represents incidents that occurred in a <see cref="Guild"/>.
@@ -772,25 +944,25 @@ public record Incidents
     /// When invites get enabled again.
     /// </summary>
     [JsonProperty("invites_disabled_until")]
-    public DateTime? InvitesDisabledUntil { get; }
+    public DateTime? InvitesDisabledUntil { get; init; }
     
     /// <summary>
     /// When direct messages get enabled again.
     /// </summary>
     [JsonProperty("dms_disabled_until")]
-    public DateTime? DmDisabledUntil { get; }
+    public DateTime? DmDisabledUntil { get; init; }
     
     /// <summary>
     /// When the direct message spam was detected.
     /// </summary>
     [JsonProperty("dm_spam_detected_at")]
-    public DateTime? DmSpamDetectedAt{ get; }
+    public DateTime? DmSpamDetectedAt{ get; init; }
     
     /// <summary>
     /// When the raid was detected.
     /// </summary>
     [JsonProperty("raid_detected_at")]
-    public DateTime? RaidDetectedAt{ get; }
+    public DateTime? RaidDetectedAt{ get; init; }
 }
 
 /// <summary>
@@ -802,13 +974,13 @@ public record WelcomeScreen
     /// Guild description shown in the welcome screen.
     /// </summary>
     [JsonProperty("description")]
-    public string? Description { get; }
+    public string? Description { get; init; }
     
     /// <summary>
     /// The channels shown in the welcome screen.
     /// </summary>
     [JsonProperty("welcome_channels")]
-    public IReadOnlyCollection<WelcomeScreenChannel> Channels { get; }
+    public IReadOnlyCollection<WelcomeScreenChannel> Channels { get; init; }
 }
 
 /// <summary>
@@ -820,25 +992,25 @@ public record WelcomeScreenChannel
     /// Channel ID.
     /// </summary>
     [JsonProperty("channel_id")]
-    public ulong ChannelId { get; }
+    public ulong ChannelId { get; init; }
 
     /// <summary>
     /// Channel description.
     /// </summary>
     [JsonProperty("description")]
-    public string Description { get; }
+    public string Description { get; init; } = string.Empty;
     
     /// <summary>
     /// Emoji ID, if the emoji is custom.
     /// </summary>
     [JsonProperty("emoji_id")]
-    public ulong? EmojiId { get; }
+    public ulong? EmojiId { get; init; }
     
     /// <summary>
     /// Emoji name if custom, the Unicode character if it's standard.
     /// </summary>
     [JsonProperty("emoji_name")]
-    public string? EmojiName { get; }
+    public string? EmojiName { get; init; }
 }
 
 
@@ -854,7 +1026,7 @@ public enum ScheduledEventStatus
 }
 
 /// <summary>
-/// Represents the entity type of a <see cref="ScheduledEvent"/> .
+/// Represents the entity type of a <see cref="ScheduledEvent"/>.
 /// </summary>    
 public enum ScheduledEventEntityType
 {
@@ -864,7 +1036,7 @@ public enum ScheduledEventEntityType
 }
 
 /// <summary>
-/// Represents the privacy level of a <see cref="ScheduledEvent"/> .
+/// Represents the privacy level of a <see cref="ScheduledEvent"/>.
 /// </summary>
 public enum ScheduledEventPrivacyLevel
 {

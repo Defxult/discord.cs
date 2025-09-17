@@ -9,10 +9,10 @@ using Discord.Models;
 using Discord.Utility;
 
 
-public class Rest
+internal class Rest
 {
+    private readonly Bot _bot;
     private readonly HttpClient _http;
-    
     private static HttpMethod Get => HttpMethod.Get;
     private static HttpMethod Post => HttpMethod.Post;
     private static HttpMethod Delete => HttpMethod.Delete;
@@ -21,6 +21,7 @@ public class Rest
 
     internal Rest(Bot bot)
     {
+        _bot = bot;
         _http = new HttpClient();
         _http.DefaultRequestHeaders.Accept.Clear();
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -35,15 +36,31 @@ public class Rest
         return new StringContent(converted, Encoding.UTF8, "application/json");
     }
 
-    #region Message
+    #region MESSAGE
 
-    // https://discord.com/developers/docs/resources/message#create-message
+    // DOCS: https://discord.com/developers/docs/resources/message#create-message
     public async Task<Message> CreateMessageAsync(ulong channelId, object payload)
     {
         string data = await RequestAsync(Post, Route($"/channels/{channelId}/messages"), payload);
         return JsonConvert.DeserializeObject<Message>(data)!;
     }
 
+    #endregion
+    
+    #region GUILD SCHEDULED EVENT
+        
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event
+    
+    // Returns a list of guild scheduled event objects for the given guild.
+    // https://discord.com/developers/docs/resources/guild-scheduled-event#list-scheduled-events-for-guild
+    internal async Task<List<ScheduledEvent>> ListScheduledEventsForGuildAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/scheduled-events?with_user_count=true"), null);
+        var events = JsonConvert.DeserializeObject<List<ScheduledEvent>>(data)!;
+        events.ForEach(e => e.Bot = _bot);
+        return events;
+    }
+    
     #endregion
     
     // Combine the base API route with the HTTP request-specific route.
