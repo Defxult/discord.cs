@@ -14,28 +14,25 @@ public class Bot
     public readonly string Token;
     
     public IReadOnlyCollection<Guild> Guilds => _guilds;
-    internal HashSet<Guild> _guilds = [];
+    internal readonly HashSet<Guild> _guilds = [];
 
-    public int ShardId { get; }
-
-    public CacheManager CacheManager;
-
-    public IReadOnlyList<Message> Messages => _cachedMessages;
-    internal List<Message> _cachedMessages = [];
-
-
-    public Rest _rest;
-
-    private List<Bot> _sessions = [];
-
+    public IReadOnlyCollection<Message> Messages => _cachedMessages;
+    internal readonly List<Message> _cachedMessages = [];
+    
     public DiscordGatewayClient Events => _client;
     private readonly DiscordGatewayClient _client;
     
+    public int ShardId { get; }
+    public Intents Intents { get; }
+    public CacheManager CacheManager;
+
+    internal readonly Rest _rest;
     internal Timer _messageCacheTimer;
 
     public Bot(string token, Intents intents, int shardId = 0, CacheManager? cacheManager = null)
     {
         Token = token;
+        Intents = intents;
         ShardId = shardId;
         _client = new DiscordGatewayClient(this, token, intents);
         _rest = new Rest(this);
@@ -46,6 +43,34 @@ public class Bot
                 _cachedMessages.RemoveAll(m => m._expiration >= DateTime.UtcNow);
         }, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
     }
+    
+    #region PUBLIC
+    
+    /// <summary>
+    /// Retrieves the guild from the cache, or <c>null</c> if not found.
+    /// </summary>
+    /// <param name="id">Guild ID.</param>
+    /// <returns></returns>
+    public Guild? GetGuild(ulong id) => _guilds.FirstOrDefault(g => g.Id == id);
+    
+    #endregion
+    
+    #region PRIVATE
+
+    internal void CacheMessage(Message message)
+    {
+        var (maxCachedMessages, span) = CacheManager.Messages;
+        if (maxCachedMessages == 0) return;
+        message._expiration = DateTime.UtcNow.Add(span);
+        if (_cachedMessages.Count == maxCachedMessages)
+        {
+            var oldest = _cachedMessages.OrderBy(m => m.Timestamp).First();
+            _cachedMessages.Remove(oldest);
+        }
+        _cachedMessages.Add(message);
+    }
+    
+    #endregion
     
     /// <summary>
     /// Updates the bot's presence.

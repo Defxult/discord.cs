@@ -397,25 +397,14 @@ public sealed class DiscordGatewayClient
                     case "MESSAGE_CREATE":
                         var messageCreated = DeserializeWithNewtonsoft<Message>(payload.D!.Value);
                         messageCreated.Bot = _bot;
-                        
-                        // Handle caching
-                        var (maxCachedMessages, span) = _bot.CacheManager.Messages;
-                        if (maxCachedMessages > 0)
-                        {
-                            messageCreated._expiration = DateTime.UtcNow.Add(span);
-                            if (_bot._cachedMessages.Count == maxCachedMessages)
-                            {
-                                var oldest = _bot._cachedMessages.OrderBy(m => m.Timestamp).First();
-                                _bot._cachedMessages.Remove(oldest);
-                            }
-                            _bot._cachedMessages.Add(messageCreated);
-                        }
+                        // INSERT
+                        _bot.CacheMessage(messageCreated);
                         OnMessageCreate?.Invoke(this, messageCreated);
                         break;
                     
-                    
                     case "GUILD_CREATE":
                         var guildCreated = DeserializeWithNewtonsoft<Guild>(payload.D!.Value);
+                        guildCreated.Bot = _bot;
                         _bot._guilds.Add(guildCreated);
                         break;
                 }
