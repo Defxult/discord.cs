@@ -11,7 +11,8 @@ public class Role : IEquatable<Role>
     /// <summary>
     /// Role ID.
     /// </summary>
-    public ulong Id { get; }
+    [JsonProperty("id")]
+    public ulong Id { get; init; }
 
     /// <summary>
     /// Role name.
@@ -66,7 +67,7 @@ public class Role : IEquatable<Role>
     /// Whether this role is managed by an integration.
     /// </summary>
     [JsonProperty("managed")]
-    public bool Managed { get; }
+    public bool Managed { get; init; }
 
     /// <summary>
     /// Whether the role is mentionable.
@@ -80,7 +81,7 @@ public class Role : IEquatable<Role>
     public RoleTag? Tags { get; internal set; }
 
     /// <summary>
-    /// The roles flags.
+    /// The roles flag's.
     /// </summary>
     public IReadOnlyCollection<RoleFlag> Flags => Util.FromBitfield<RoleFlag>(_flags);
     [JsonProperty("flags")] internal int _flags;
@@ -110,9 +111,8 @@ public class Role : IEquatable<Role>
     #endregion
 
     [JsonConstructor]
-    internal Role(ulong id, ulong permissions, JSON? tags)
+    internal Role(ulong permissions, JSON? tags)
     {
-        Id = id;
         Permissions = new Permissions(permissions);
         
         /*
@@ -147,31 +147,45 @@ public enum RoleFlag
 /// <summary>
 /// Represents a <see cref="Role"/> color.
 /// </summary>
-public record RoleColor
+public record struct RoleColor
 {
     /// <summary>
-    /// The primary color for the role.
+    /// Primary color value.
     /// </summary>
+    [JsonProperty("primary_color")]
     public int Primary;
     
     /// <summary>
-    /// The secondary color for the role, this will make the role a gradient between the other provided colors.
+    /// Secondary color value.
     /// </summary>
+    [JsonProperty("secondary_color")]
     public int? Secondary;
     
     /// <summary>
-    /// The tertiary color for the role, this will turn the gradient into a holographic style.
+    /// Tertiary color value.
     /// </summary>
+    [JsonProperty("tertiary_color")]
     public int? Tertiary;
 
-    [JsonConstructor]
-    internal RoleColor(int primary_color, int? secondary_color, int? tertiary_color)
+    /// <summary>
+    /// Initializes a role color with its default values.
+    /// </summary>
+    public RoleColor() { }
+
+    /// <summary>
+    /// Initializes a role color.
+    /// </summary>
+    /// <param name="primary">The primary color for the role.</param>
+    /// <param name="secondary">The secondary color for the role, this will make the role a gradient between the other provided colors.</param>
+    /// <param name="tertiary">The tertiary color for the role, this will turn the gradient into a holographic style.</param>
+    public RoleColor(int primary, int? secondary, int? tertiary)
     {
-        Primary = primary_color;
-        Secondary = secondary_color;
-        Tertiary = tertiary_color;
+        Primary = primary;
+        Secondary = secondary;
+        Tertiary = tertiary;
     }
 }
+
 
 /// <summary>
 /// Represents the tag belonging to a <see cref="Role"/>.
