@@ -90,7 +90,7 @@ public sealed class DiscordGatewayClient
             if (_ws.State == WebSocketState.Open)
             {
                 await _ws.CloseAsync(WebSocketCloseStatus.Empty, string.Empty, _cts.Token);
-                Dev.Log("[GW] Client WebSocket Closed");
+                Dev.Log("[GW] Client WebSocket connection manually closed");
             }
         }
         catch (Exception e)
@@ -158,7 +158,7 @@ public sealed class DiscordGatewayClient
     private async Task HeartbeatLoopAsync()
     {
         Dev.Log("[GW] Heartbeat loop started");
-        while (true)
+        while (!_cts.IsCancellationRequested)
         {
             await Task.Delay(_heartbeatInterval, _cts.Token);
             if (_ws.State == WebSocketState.Open)
@@ -333,6 +333,7 @@ public sealed class DiscordGatewayClient
             op = Opcode.Heartbeat,
             d = _lastSequence
         };
+        _heartbeatResponse = false;
         await SendJsonAsync(heartbeat);
         Dev.Log("[GW] HEARTBEAT payload sent");
 
@@ -345,8 +346,6 @@ public sealed class DiscordGatewayClient
         // besides 1000 or 1001, then reconnect and attempt to Resume.
         async Task VerifyHeartbeat()
         {
-            _heartbeatResponse = false;
-            
             // Wait for heartbeat ACK to be sent by Discord. This response time can differ based on server host location.
             // For now, waiting ~2 seconds seems like enough time to believe that a possible "zombie" connection occurred.
             var timeout = TimeSpan.FromSeconds(2);
@@ -367,7 +366,7 @@ public sealed class DiscordGatewayClient
             _lastSequence = payload.S.Value;
     }
 
-    private static JsonElement GetElementValue(JsonElement element, string key) => 
+    internal static JsonElement GetElementValue(JsonElement element, string key) => 
         element.GetProperty(key);
     
     internal static T DeserializeWithNewtonsoft<T>(JsonElement element)
@@ -397,7 +396,7 @@ public sealed class DiscordGatewayClient
                     case "MESSAGE_CREATE":
                         var messageCreated = DeserializeWithNewtonsoft<Message>(payload.D!.Value);
                         messageCreated.Bot = _bot;
-                        // INSERT
+                        // TODO - INSERT
                         _bot.CacheMessage(messageCreated);
                         OnMessageCreate?.Invoke(this, messageCreated);
                         break;
@@ -458,9 +457,9 @@ public sealed class DiscordGatewayClient
 }
 
 // Represents a Gateway payload.
-public sealed record GatewayPayload(int Op, JsonElement? D, ulong? S, string? T)
+internal record GatewayPayload(int Op, JsonElement? D, ulong? S, string? T)
 {
-    public static GatewayPayload FromJson(JsonElement root)
+    internal static GatewayPayload FromJson(JsonElement root)
     {
         int op = root.GetProperty("op").GetInt32();
         JsonElement? d = root.TryGetProperty("d", out var dVal) ? dVal : null;

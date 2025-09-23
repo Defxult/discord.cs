@@ -340,7 +340,7 @@ public class Guild : IEquatable<Guild>
 public struct GuildEdit
 {
     internal JSON _payload = [];
-    private HashSet<string> _features = [];
+    private readonly HashSet<string> _features = [];
 
     /// <summary>
     /// Initializes a new guild edit instance.
@@ -350,7 +350,7 @@ public struct GuildEdit
     /// <summary>
     /// The new name for the guild.
     /// </summary>
-    public readonly GuildEdit SetName(string name)
+    public GuildEdit SetName(string name)
     {
         _payload["name"] = name;
         return this;
@@ -359,7 +359,7 @@ public struct GuildEdit
     /// <summary>
     /// The new verification level for the guild.
     /// </summary>
-    public readonly GuildEdit SetVerificationLevel(GuildVerificationLevel? verificationLevel)
+    public GuildEdit SetVerificationLevel(GuildVerificationLevel? verificationLevel)
     {
         _payload["verification_level"] = verificationLevel;
         return this;
@@ -368,7 +368,7 @@ public struct GuildEdit
     /// <summary>
     /// The new default notification level for the guild.
     /// </summary>
-    public readonly GuildEdit SetMessageNotificationLevel(GuildMessageNotificationLevel? notificationLevel)
+    public GuildEdit SetMessageNotificationLevel(GuildMessageNotificationLevel? notificationLevel)
     {
         _payload["default_message_notifications"] = notificationLevel;
         return this;
@@ -377,7 +377,7 @@ public struct GuildEdit
     /// <summary>
     /// The new explicit content filter for the guild.
     /// </summary>
-    public readonly GuildEdit SetExplicitContentFilterLevel(GuildExplicitContentFilterLevel? explicitContentFilterLevel)
+    public GuildEdit SetExplicitContentFilterLevel(GuildExplicitContentFilterLevel? explicitContentFilterLevel)
     {
         _payload["explicit_content_filter"] = explicitContentFilterLevel;
         return this;
@@ -386,7 +386,7 @@ public struct GuildEdit
     /// <summary>
     /// The new AFK channel. Can be set to <c>null</c> to disable AFK channels.
     /// </summary>
-    public readonly GuildEdit SetAfkChannel(ulong? id)
+    public GuildEdit SetAfkChannel(ulong? id)
     {
         _payload["afk_channel_id"] = id;
         return this;
@@ -405,7 +405,7 @@ public struct GuildEdit
     ///     <item>3600 (60 minutes)</item>
     /// </list>
     /// </remarks>
-    public readonly GuildEdit SetAfkTimeout(int? value)
+    public GuildEdit SetAfkTimeout(int? value)
     {
         _payload["afk_timeout"] = value;
         return this;
@@ -414,7 +414,7 @@ public struct GuildEdit
     /// <summary>
     /// The new guild icon. Can be animated if the guild has the <see cref="GuildFeature.AnimatedIcon"/> feature. Can be set to <c>null</c> to remove the icon.
     /// </summary>
-    public readonly GuildEdit SetIcon(DFile? file)
+    public GuildEdit SetIcon(DFile? file)
     {
         _payload["icon"] = file?._mimeTypeBase64;
         return this;
@@ -423,7 +423,7 @@ public struct GuildEdit
     /// <summary>
     /// Transfer guild ownership (bot must be the owner of the guild).
     /// </summary>
-    public readonly GuildEdit SetOwner(ulong id)
+    public GuildEdit SetOwner(ulong id)
     {
         _payload["owner_id"] = id;
         return this;
@@ -432,7 +432,7 @@ public struct GuildEdit
     /// <summary>
     /// The new splash image. Guild must have the <see cref="GuildFeature.InviteSplash"/> feature.  Can be set to <c>null</c> to remove the guild splash image.
     /// </summary>
-    public readonly GuildEdit SetSplash(DFile? file)
+    public GuildEdit SetSplash(DFile? file)
     {
         _payload["splash"] = file?._mimeTypeBase64;
         return this;
@@ -441,7 +441,7 @@ public struct GuildEdit
     /// <summary>
     /// The new discovery splash image. Guild must have the <see cref="GuildFeature.Discoverable"/> feature. Can be set to <c>null</c> to remove the guild discovery splash image.
     /// </summary>
-    public readonly GuildEdit SetDiscoverySplash(DFile? file)
+    public GuildEdit SetDiscoverySplash(DFile? file)
     {
         _payload["discovery_splash"] = file?._mimeTypeBase64;
         return this;
@@ -451,7 +451,7 @@ public struct GuildEdit
     /// The new banner image. Guild must have the <see cref="GuildFeature.Banner"/> feature. Can be animated if the guild has the <see cref="GuildFeature.AnimatedBanner"/> feature.
     /// Can be set to <c>null</c> to remove the guild banner.
     /// </summary>
-    public readonly GuildEdit SetBanner(DFile? file)
+    public GuildEdit SetBanner(DFile? file)
     {
         _payload["banner"] = file?._mimeTypeBase64;
         return this;
@@ -460,7 +460,7 @@ public struct GuildEdit
     /// <summary>
     /// The new channel where guild notices such as welcome messages and boost events are posted. Can be set to <c>null</c> to disable the system channel.
     /// </summary>
-    public readonly GuildEdit SetSystemChannel(ulong? id)
+    public GuildEdit SetSystemChannel(ulong? id)
     {
         _payload["system_channel_id"] = id;
         return this;
@@ -469,7 +469,7 @@ public struct GuildEdit
     /// <summary>
     /// The new channel where admins and moderators of Community guilds receive notices from Discord. Only available for guilds with the <see cref="GuildFeature.Community"/> feature.
     /// </summary>
-    public readonly GuildEdit SetPublicUpdatesChannel(ulong? id)
+    public GuildEdit SetPublicUpdatesChannel(ulong? id)
     {
         _payload["public_updates_channel_id"] = id;
         return this;
@@ -478,7 +478,7 @@ public struct GuildEdit
     /// <summary>
     /// The new values for the guild system channel.
     /// </summary>
-    public readonly GuildEdit SetSystemChannelFlags(IEnumerable<GuildSystemChannelFlags> flags)
+    public GuildEdit SetSystemChannelFlags(IEnumerable<GuildSystemChannelFlags> flags)
     {
         var value = 0;
         foreach (var flag in flags)
@@ -490,7 +490,7 @@ public struct GuildEdit
     /// <summary>
     /// The new preferred locale of a Community guild used in server discovery and notices from Discord.
     /// </summary>
-    public readonly GuildEdit SetPreferredLocal(Locale? locale)
+    public GuildEdit SetPreferredLocal(Locale? locale)
     {
         _payload["preferred_locale"] = locale?.GetDescription();
         return this;
@@ -501,7 +501,7 @@ public struct GuildEdit
     /// To disable, set both parameters to <c>null</c>.
     /// </summary>
     /// <exception cref="ArgumentException"></exception>
-    public readonly GuildEdit SetCommunityEnabled(ulong? rulesChannelId, ulong? publicUpdatesChannelId)
+    public GuildEdit SetCommunityEnabled(ulong? rulesChannelId, ulong? publicUpdatesChannelId)
     {
         if (rulesChannelId == null && publicUpdatesChannelId == null)
         {
@@ -529,7 +529,7 @@ public struct GuildEdit
     /// <summary>
     /// Enable/disable discovery in the guild.
     /// </summary>
-    public readonly GuildEdit SetDiscoveryEnabled(bool value)
+    public GuildEdit SetDiscoveryEnabled(bool value)
     {
         if (value)
             _features.Add(GuildFeature.Discoverable.GetDescription());
@@ -542,7 +542,7 @@ public struct GuildEdit
     /// <summary>
     /// Pauses all invites/access to the guild.
     /// </summary>
-    public readonly GuildEdit SetInvitesDisabled(bool value)
+    public GuildEdit SetInvitesDisabled(bool value)
     {
         if (value)
             _features.Add(GuildFeature.InvitesDisabled.GetDescription());
@@ -555,7 +555,7 @@ public struct GuildEdit
     /// <summary>
     /// Enable/disable alerts for join raids.
     /// </summary>
-    public readonly GuildEdit SetRaidAlertsDisabled(bool value)
+    public GuildEdit SetRaidAlertsDisabled(bool value)
     {
         if (value)
             _features.Add(GuildFeature.RaidAlertsDisabled.GetDescription());
@@ -568,7 +568,7 @@ public struct GuildEdit
     /// <summary>
     /// The new description for the guild. Only available for guilds with the <see cref="GuildFeature.Community"/> feature.
     /// </summary>
-    public readonly GuildEdit SetDescription(string? description)
+    public GuildEdit SetDescription(string? description)
     {
         _payload["description"] = description;
         return this;
@@ -577,7 +577,7 @@ public struct GuildEdit
     /// <summary>
     /// Enable/disable the guild's boost progress bar.
     /// </summary>
-    public readonly GuildEdit SetPremiumProgressBarEnabled(bool value)
+    public GuildEdit SetPremiumProgressBarEnabled(bool value)
     {
         _payload["premium_progress_bar_enabled"] = value;
         return this;
@@ -586,7 +586,7 @@ public struct GuildEdit
     /// <summary>
     /// The channel where admins and moderators of Community guilds receive safety alerts from Discord. Can be set to <c>null</c> to disable the safety channel.
     /// </summary>
-    public readonly GuildEdit SetSafetyAlertsChannel(ulong? id)
+    public GuildEdit SetSafetyAlertsChannel(ulong? id)
     {
         _payload["safety_alerts_channel_id"] = id;
         return this;
@@ -822,6 +822,8 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
 /// </summary>
 public record RecurrenceRule
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-recurrence-rule-object
+    
     /// <summary>
     /// Starting time of the recurrence interval.
     /// </summary>
@@ -885,16 +887,24 @@ public record RecurrenceRule
     
 }
 
+/// <summary>
+/// Represents a frequency for <see cref="RecurrenceRule"/>.
+/// </summary>
 public enum RecurrenceRuleFrequency
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-recurrence-rule-object-guild-scheduled-event-recurrence-rule-frequency
+    
     Yearly,
     Monthly,
     Weekly,
     Daily
 }
 
+/// <inheritdoc cref="RecurrenceRuleFrequency"/>
 public enum RecurrenceRuleFrequencyWeekday
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-recurrence-rule-object-guild-scheduled-event-recurrence-rule-weekday
+    
     Monday,
     Tuesday,
     Wednesday,
@@ -904,8 +914,11 @@ public enum RecurrenceRuleFrequencyWeekday
     Sunday
 }
 
+/// <inheritdoc cref="RecurrenceRuleFrequency"/>
 public enum RecurrenceRuleFrequencyMonth
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-recurrence-rule-object-guild-scheduled-event-recurrence-rule-month
+    
     Jan = 1,
     Feb,
     Mar,
@@ -920,8 +933,11 @@ public enum RecurrenceRuleFrequencyMonth
     Dec
 }
 
+/// <inheritdoc cref="RecurrenceRuleFrequency"/>
 public record RecurrenceRuleFrequencyNWeekday
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-recurrence-rule-object-guild-scheduled-event-recurrence-rule-nweekday-structure
+    
     /// <summary>
     /// The week to reoccur on (1 - 5).
     /// </summary>
@@ -940,6 +956,8 @@ public record RecurrenceRuleFrequencyNWeekday
 /// </summary>
 public record Incidents
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#incidents-data-object
+    
     /// <summary>
     /// When invites get enabled again.
     /// </summary>
@@ -970,6 +988,8 @@ public record Incidents
 /// </summary>
 public record WelcomeScreen
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#welcome-screen-object
+    
     /// <summary>
     /// Guild description shown in the welcome screen.
     /// </summary>
@@ -980,7 +1000,7 @@ public record WelcomeScreen
     /// The channels shown in the welcome screen.
     /// </summary>
     [JsonProperty("welcome_channels")]
-    public IReadOnlyCollection<WelcomeScreenChannel> Channels { get; init; }
+    public required IReadOnlyCollection<WelcomeScreenChannel> Channels { get; init; }
 }
 
 /// <summary>
@@ -988,6 +1008,8 @@ public record WelcomeScreen
 /// </summary>
 public record WelcomeScreenChannel
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#welcome-screen-object-welcome-screen-channel-structure
+    
     /// <summary>
     /// Channel ID.
     /// </summary>
@@ -1019,6 +1041,8 @@ public record WelcomeScreenChannel
 /// </summary>    
 public enum ScheduledEventStatus
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object-guild-scheduled-event-status
+    
     Scheduled = 1,
     Active,
     Completed,
@@ -1026,10 +1050,11 @@ public enum ScheduledEventStatus
 }
 
 /// <summary>
-/// Represents the entity type of a <see cref="ScheduledEvent"/>.
+/// Represents the type of the <see cref="ScheduledEvent"/>.
 /// </summary>    
 public enum ScheduledEventEntityType
 {
+    // https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object-guild-scheduled-event-entity-types
     StageInstance = 1,
     Voice,
     External
@@ -1040,6 +1065,8 @@ public enum ScheduledEventEntityType
 /// </summary>
 public enum ScheduledEventPrivacyLevel
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object-guild-scheduled-event-privacy-level
+    
     GuildOnly = 2
 }
 
@@ -1048,6 +1075,8 @@ public enum ScheduledEventPrivacyLevel
 /// </summary>
 public enum GuildVerificationLevel
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-object-verification-level
+    
     /// <summary>
     /// Unrestricted.
     /// </summary>
@@ -1079,6 +1108,8 @@ public enum GuildVerificationLevel
 /// </summary>
 public enum GuildMessageNotificationLevel
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-object-default-message-notification-level
+    
     /// <summary>
     /// Members will receive notifications for all messages by default.
     /// </summary>
@@ -1095,6 +1126,8 @@ public enum GuildMessageNotificationLevel
 /// </summary>
 public enum GuildExplicitContentFilterLevel
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-object-explicit-content-filter-level
+    
     /// <summary>
     /// Media content will not be scanned.
     /// </summary>
@@ -1116,6 +1149,8 @@ public enum GuildExplicitContentFilterLevel
 /// </summary>
 public enum GuildMfaLevel
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-object-mfa-level
+    
     /// <summary>
     /// Guild has no MFA/2FA requirement for moderation actions.
     /// </summary>
@@ -1132,6 +1167,8 @@ public enum GuildMfaLevel
 /// </summary>
 public enum GuildNsfwLevel
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-object-guild-nsfw-level
+    
     Default,
     Explicit,
     Safe,
@@ -1143,6 +1180,8 @@ public enum GuildNsfwLevel
 /// </summary>
 public enum GuildPremiumTier
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-object-premium-tier
+    
     /// <summary>
     /// Guild has not unlocked any Server Boost perks.
     /// </summary>
@@ -1169,6 +1208,8 @@ public enum GuildPremiumTier
 /// </summary>
 public enum GuildSystemChannelFlags
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-object-system-channel-flags
+    
     /// <summary>
     /// Suppress member join notifications.
     /// </summary>
@@ -1205,6 +1246,8 @@ public enum GuildSystemChannelFlags
 /// </summary>
 public enum GuildFeature
 {
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-object-guild-features
+    
     /// <summary>
     /// Guild has access to set an animated guild banner image.
     /// </summary>
@@ -1365,5 +1408,23 @@ public enum GuildFeature
     /// Guild has enabled the welcome screen.
     /// </summary>
     [Description("WELCOME_SCREEN_ENABLED")]
-    WelcomeScreenEnabled
+    WelcomeScreenEnabled,
+    
+    /// <summary>
+    /// Guild has access to guest invites.
+    /// </summary>
+    [Description("GUESTS_ENABLED")]
+    GuestsEnabled,
+    
+    /// <summary>
+    /// Guild has access to set guild tags.
+    /// </summary>
+    [Description("GUILD_TAGS")]
+    GuildTags,
+    
+    /// <summary>
+    /// Guild is able to set gradient colors to roles.
+    /// </summary>
+    [Description("ENHANCED_ROLE_COLORS")]
+    EnhancedRoleColors
 }

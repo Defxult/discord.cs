@@ -8,6 +8,8 @@ namespace Discord.Models;
 /// </summary>
 public class Role : IEquatable<Role>
 {
+    // DOCS: https://discord.com/developers/docs/topics/permissions#role-object
+    
     /// <summary>
     /// Role ID.
     /// </summary>
@@ -138,6 +140,8 @@ public class Role : IEquatable<Role>
 /// </summary>
 public enum RoleFlag
 {
+    // DOCS: https://discord.com/developers/docs/topics/permissions#role-object-role-flags
+    
     /// <summary>
     /// Members can select this role in an onboarding prompt.
     /// </summary>
@@ -149,6 +153,8 @@ public enum RoleFlag
 /// </summary>
 public record struct RoleColor
 {
+    // DOCS: https://discord.com/developers/docs/topics/permissions#role-object-role-colors-object
+    
     /// <summary>
     /// Primary color value.
     /// </summary>
@@ -192,6 +198,8 @@ public record struct RoleColor
 /// </summary>
 public record RoleTag
 {
+    // DOCS: https://discord.com/developers/docs/topics/permissions#role-object-role-tags-structure
+    
     /// <summary>
     /// ID of the bot this role belongs to.
     /// </summary>
@@ -222,7 +230,7 @@ public record RoleTag
     /// </summary>
     public readonly bool GuildConnections;
 
-    internal RoleTag(ulong? botId, ulong? integrationId, bool isPremiumSub, ulong? subscriptionListingId, bool forPurchase, bool guildConnections) 
+    private RoleTag(ulong? botId, ulong? integrationId, bool isPremiumSub, ulong? subscriptionListingId, bool forPurchase, bool guildConnections) 
     {
         BotId = botId;
         IntegrationId = integrationId;

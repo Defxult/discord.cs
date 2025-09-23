@@ -13,7 +13,7 @@ public class Media : Downloadable, IEquatable<Media>
     /// </summary>
     public readonly string Hash;
 
-    #region API Separated
+    #region CUSTOM
 
     /// <summary>
     /// Whether the media is animated.
