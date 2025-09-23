@@ -51,7 +51,23 @@ public class Bot
     /// </summary>
     /// <param name="id">Guild ID.</param>
     /// <returns></returns>
-    public Guild? GetGuild(ulong id) => _guilds.FirstOrDefault(g => g.Id == id);
+    public Guild? GetGuild(ulong id) =>
+        _guilds.FirstOrDefault(g => g.Id == id);
+
+    /// <summary>
+    /// Requests a sticker by its ID.
+    /// </summary>
+    /// <param name="id">Sticker ID</param>
+    /// <returns>The requested sticker.</returns>
+    public async Task<Sticker> RequestStickerAsync(ulong id) =>
+        await _rest.GetStickerAsync(id);
+
+    /// <summary>
+    /// Requests the premium sticker packs.
+    /// </summary>
+    /// <returns>A list of sticker packs.</returns>
+    public async Task<IReadOnlyCollection<StickerPack>> RequestStickerPacksAsync() =>
+        await _rest.ListStickerPacksAsync();
     
     #endregion
     

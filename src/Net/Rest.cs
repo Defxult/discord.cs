@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 
 namespace Discord.Net;
 using System.Net.Http.Headers;
@@ -61,6 +62,26 @@ internal class Rest
         return events;
     }
     
+    #endregion
+
+    #region STICKER
+    
+    // Returns a sticker object for the given sticker ID.
+    // https://discord.com/developers/docs/resources/sticker#get-sticker
+    internal async Task<Sticker> GetStickerAsync(ulong id)
+    {
+        string data = await RequestAsync(Get, Route($"/stickers/{id}"));
+        return JsonConvert.DeserializeObject<Sticker>(data)!;
+    }
+
+    // Returns a list of available sticker packs.
+    // https://discord.com/developers/docs/resources/sticker#list-sticker-packs
+    internal async Task<List<StickerPack>> ListStickerPacksAsync()
+    {
+        string data = await RequestAsync(Get, Route($"/sticker-packs"));
+        return Util.ExtractFromJson<List<StickerPack>>(data, "sticker_packs");
+    }
+
     #endregion
     
     // Combine the base API route with the HTTP request-specific route.

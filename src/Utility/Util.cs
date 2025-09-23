@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Text.Json;
 using Discord.Models;
+using Discord.Net;
 
 namespace Discord.Utility;
 
@@ -53,6 +55,13 @@ public static class Util
         }
         await Task.WhenAll(tasks);
         return files;
+    }
+
+    internal static T ExtractFromJson<T>(string json, string key)
+    {
+        var document = JsonDocument.Parse(json);
+        document.RootElement.TryGetProperty(key, out JsonElement element);
+        return DiscordGatewayClient.DeserializeWithNewtonsoft<T>(element);
     }
     
     internal static List<T> FromBitfield<T>(int value)
