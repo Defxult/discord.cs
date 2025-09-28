@@ -31,7 +31,7 @@ internal class Rest
     }
     
     // Converts the JSON object (data) to its string representation.
-    internal static StringContent ToStringContent(object data)
+    private static StringContent ToStringContent(object data)
     {
         string converted = JsonConvert.SerializeObject(data);
         return new StringContent(converted, Encoding.UTF8, "application/json");
@@ -56,7 +56,7 @@ internal class Rest
     // https://discord.com/developers/docs/resources/guild-scheduled-event#list-scheduled-events-for-guild
     internal async Task<List<ScheduledEvent>> ListScheduledEventsForGuildAsync(ulong guildId)
     {
-        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/scheduled-events?with_user_count=true"), null);
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/scheduled-events?with_user_count=true"));
         var events = JsonConvert.DeserializeObject<List<ScheduledEvent>>(data)!;
         events.ForEach(e => e.Bot = _bot);
         return events;
@@ -81,6 +81,77 @@ internal class Rest
         string data = await RequestAsync(Get, Route($"/sticker-packs"));
         return Util.ExtractFromJson<List<StickerPack>>(data, "sticker_packs");
     }
+    
+    // Returns a sticker pack object for the given sticker pack ID.
+    // https://discord.com/developers/docs/resources/sticker#get-sticker-pack
+    internal async Task<StickerPack> GetStickerPackAsync(ulong id)
+    {
+        string data = await RequestAsync(Get, Route($"/sticker-packs/{id}"));
+        return JsonConvert.DeserializeObject<StickerPack>(data)!;
+    }
+    
+    // Returns an array of sticker objects for the given guild. Includes user fields if the bot has the
+    // CREATE_GUILD_EXPRESSIONS or MANAGE_GUILD_EXPRESSIONS permission.
+    // https://discord.com/developers/docs/resources/sticker#list-guild-stickers
+    internal async Task<List<GuildSticker>> ListGuildStickersAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/stickers"));
+        var stickers = JsonConvert.DeserializeObject<List<GuildSticker>>(data)!;
+        stickers.ForEach(s => s.Bot = _bot);
+        return stickers;
+    }
+
+    // Returns a sticker object for the given guild and sticker IDs. Includes the user field if the bot has the
+    // CREATE_GUILD_EXPRESSIONS or MANAGE_GUILD_EXPRESSIONS permission.
+    // https://discord.com/developers/docs/resources/sticker#get-guild-sticker
+    internal async Task<GuildSticker> GetGuildStickerAsync(ulong guildId, ulong stickerId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/stickers/{stickerId}"));
+        var sticker = JsonConvert.DeserializeObject<GuildSticker>(data)!;
+        sticker.Bot = _bot;
+        return sticker;
+    }
+    
+    // Create a new sticker for the guild. Send a multipart/form-data body. Requires the CREATE_GUILD_EXPRESSIONS permission.
+    // Returns the new sticker object on success. Fires a Guild Stickers Update Gateway event.
+    // https://discord.com/developers/docs/resources/sticker#create-guild-sticker
+    internal async Task<GuildSticker> CreateGuildStickerAsync(ulong guildId, string name, string description, string emoji, DFile file, string? reason)
+    {
+        var boundary = Guid.NewGuid().ToString().Replace("-", string.Empty);
+        
+        using var form = new MultipartFormDataContent(boundary);
+        form.Add(new StringContent(name), "name");
+        form.Add(new StringContent(description), "description");
+        form.Add(new StringContent(emoji), "tags");
+        
+        var fileContent = new ByteArrayContent(file.Bytes);
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue(file._mimeType);
+        form.Add(fileContent, "file", file.Name);
+        
+        string data = await RequestAsync(Post, Route($"/guilds/{guildId}/stickers"), form, reason);
+        var sticker = JsonConvert.DeserializeObject<GuildSticker>(data)!;
+        sticker.Bot = _bot;
+        return sticker;
+    }
+    
+    // Modify the given sticker. For stickers created by the current user, requires either the CREATE_GUILD_EXPRESSIONS
+    // or MANAGE_GUILD_EXPRESSIONS permission. For other stickers, requires the MANAGE_GUILD_EXPRESSIONS permission.
+    // Returns the updated sticker object on success. Fires a Guild Stickers Update Gateway event.
+    // https://discord.com/developers/docs/resources/sticker#modify-guild-sticker
+    internal async Task<GuildSticker> ModifyGuildStickerAsync(ulong guildId, ulong stickerId, GuildStickerEdit edit, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/stickers/{stickerId}"), edit._payload, reason);
+        var sticker = JsonConvert.DeserializeObject<GuildSticker>(data)!;
+        sticker.Bot = _bot;
+        return sticker;
+    }
+
+    // Delete the given sticker. For stickers created by the current user, requires either the CREATE_GUILD_EXPRESSIONS
+    // or MANAGE_GUILD_EXPRESSIONS permission. For other stickers, requires the MANAGE_GUILD_EXPRESSIONS permission.
+    // Returns 204 No Content on success. Fires a Guild Stickers Update Gateway event.
+    // https://discord.com/developers/docs/resources/sticker#delete-guild-sticker
+    internal async Task DeleteGuildStickerAsync(ulong guildId, ulong stickerId, string? reason) =>
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/stickers/{stickerId}"), reason);
 
     #endregion
     
@@ -129,11 +200,14 @@ internal class Rest
             );
     }
 
-    private async Task<string> RequestAsync(HttpMethod method, string route, object? data  = null)
+    private async Task<string> RequestAsync(HttpMethod method, string route, object? data  = null, string? auditReason = null)
     {
         using HttpRequestMessage request = new(method, route);
         if (data != null)
-            request.Content = ToStringContent(data);
+            request.Content = data is MultipartFormDataContent form ? form: ToStringContent(data);
+        
+        if  (auditReason != null)
+            request.Headers.Add("X-Audit-Log-Reason", auditReason);
         
         using HttpResponseMessage response = await _http.SendAsync(request);
         
