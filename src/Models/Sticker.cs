@@ -156,6 +156,12 @@ public class GuildSticker : IEquatable<GuildSticker>
     // Discord says this is optional, so there's a chance it might not be there. But I can't find any circumstances as
     // to why it wouldn't be present, so a non-optional type will do for now.
     public bool IsAvailable { get; internal set; }
+    
+    /// <summary>
+    /// ID of the guild that owns this sticker.
+    /// </summary>
+    [JsonProperty("guild_id")]
+    public ulong GuildId { get; init; }
 
     /// <summary>
     /// The user that uploaded the guild sticker.
@@ -163,11 +169,82 @@ public class GuildSticker : IEquatable<GuildSticker>
     [JsonProperty("user")]
     public User? User { get; init; }
     
+    #region CUSTOM
+
+    /// <summary>
+    /// Your bot instance.
+    /// </summary>
+    public Bot? Bot { get; internal set; }
+    
+    /// <summary>
+    /// Guild that owns this sticker.
+    /// </summary>
+    public Guild? Guild => Bot?.GetGuild(GuildId);
+
+    #endregion
+    
     public override bool Equals(object? other) => other is GuildSticker sticker && Equals(sticker);
     public bool Equals(GuildSticker? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
+    
+    /// <summary>
+    /// Edit the guild sticker.
+    /// </summary>
+    /// <param name="edit">Guild sticker edit instance.</param>
+    /// <param name="reason">The audit log reason for editing the guild sticker. </param>
+    /// <returns></returns>
+    public async Task<GuildSticker> EditAsync(GuildStickerEdit edit, string? reason = null) =>
+        await Bot!._rest.ModifyGuildStickerAsync(GuildId, Id, edit, reason);
+    
+    /// <summary>
+    /// Deletes the guild sticker.
+    /// </summary>
+    /// <param name="reason">Reason for deleting the guild sticker.</param>
+    public async Task DeleteAsync(string? reason = null) =>
+        await Bot!._rest.DeleteGuildStickerAsync(GuildId, Id, reason);
 }
 
+/// <summary>
+/// Represents the values that can be edited for a <see cref="GuildSticker"/>.
+/// </summary>
+public struct GuildStickerEdit
+{
+    internal JSON _payload = [];
+
+    /// <summary>
+    /// Initializes a new guild sticker edit instance.
+    /// </summary>
+    public GuildStickerEdit() { }
+
+    /// <summary>
+    /// Name of the sticker (2-30 characters).
+    /// </summary>
+    public GuildStickerEdit SetName(string name)
+    {
+        _payload["name"] = name;
+        return this;
+    }
+    
+    /// <summary>
+    /// Description of the sticker (2-100 characters).
+    /// </summary>
+    public GuildStickerEdit SetDescription(string? description)
+    {
+        _payload["description"] = description;
+        return this;
+    }
+    
+    /// <summary>
+    /// The emoji that's related to the sticker.
+    /// </summary>
+    /// <param name="emoji">An emoji.</param>
+    /// <returns></returns>
+    public GuildStickerEdit SetEmoji(string emoji)
+    {
+        _payload["tags"] = emoji;
+        return this;
+    }
+}
 
 public enum StickerType
 {

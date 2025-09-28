@@ -68,6 +68,14 @@ public class Bot
     /// <returns>A list of sticker packs.</returns>
     public async Task<IReadOnlyCollection<StickerPack>> RequestStickerPacksAsync() =>
         await _rest.ListStickerPacksAsync();
+
+    /// <summary>
+    /// Requests a specific premium sticker pack.
+    /// </summary>
+    /// <param name="id">ID of the sticker pack.</param>
+    /// <returns>The requested sticker pack.</returns>
+    public async Task<StickerPack> RequestStickerPackAsync(ulong id) =>
+        await _rest.GetStickerPackAsync(id);
     
     #endregion
     

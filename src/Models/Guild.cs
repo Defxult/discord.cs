@@ -291,14 +291,40 @@ public class Guild : IEquatable<Guild>
     public bool Equals(Guild? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
     
-    #region SCHEDULED EVENT
+    #region PUBLIC
 
     /// <summary>
-    /// Retrieves a list of scheduled events for the guild.
+    /// Requests scheduled events for the guild.
     /// </summary>
     /// <returns>All scheduled events for the guild.</returns>
-    public async Task<IReadOnlyCollection<ScheduledEvent>> ScheduledEventsAsync() =>
+    public async Task<IReadOnlyCollection<ScheduledEvent>> RequestScheduledEventsAsync() =>
         await Bot!._rest.ListScheduledEventsForGuildAsync(Id);
+
+    /// <summary>
+    /// Creates a guild sticker.
+    /// </summary>
+    /// <param name="name">Name of the sticker.</param>
+    /// <param name="description">Description of the sticker.</param>
+    /// <param name="emoji">Emoji that's related to the sticker.</param>
+    /// <param name="file">File data for the sticker.</param>
+    /// <param name="reason">Reason for creating the sticker. This is displayed in the audit-log.</param>
+    public async Task CreateStickerAsync(string name, string description, string emoji, DFile file, string? reason = null) =>
+        await Bot!._rest.CreateGuildStickerAsync(Id, name, description, emoji, file, reason);
+    
+    /// <summary>
+    /// Requests guild stickers.
+    /// </summary>
+    /// <returns>All stickers in the guild.</returns>
+    public async Task<IReadOnlyCollection<GuildSticker>> RequestStickersAsync() =>
+        await Bot!._rest.ListGuildStickersAsync(Id);
+    
+    /// <summary>
+    /// Requests a specific guild sticker.
+    /// </summary>
+    /// <param name="id">Sticker ID.</param>
+    /// <returns>The requested sticker</returns>
+    public async Task<GuildSticker> RequestStickerAsync(ulong id) =>
+        await Bot!._rest.GetGuildStickerAsync(Id, id);
     
     #endregion
 
