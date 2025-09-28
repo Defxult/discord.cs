@@ -32,29 +32,28 @@ public static class Util
     /// <param name="timeout">When the download will time out (defaults to 30 seconds).</param>
     /// <returns>All URLs converted into a list of <see cref="DFile"/>.</returns>
     /// <exception cref="ArgumentException">Not all URLs ended in a path extension.</exception>
-    public static async Task<ICollection<DFile>> DownloadAsync(IReadOnlyCollection<Uri> uris, TimeSpan? timeout = null)
+    public static async IAsyncEnumerable<DFile> DownloadAsync(IReadOnlyCollection<Uri> uris, TimeSpan? timeout = null)
     {
-        if (uris.Count == 0) return [];
+        if (uris.Count == 0) yield break;
         
         using var http = new HttpClient();
         http.Timeout = timeout ?? TimeSpan.FromSeconds(30);
-        var tasks = new List<Task>();
-        var files = new List<DFile>();
         
-        var allHasExtensions = uris.All(u => Path.GetExtension(u.AbsolutePath) != string.Empty);
-        if (!allHasExtensions)
+        if (uris.Any(u => Path.GetExtension(u.AbsolutePath) == string.Empty)) 
             throw new ArgumentException($"All URIs in '{nameof(uris)}' must be a file (end in an extension)");
-        foreach (var uri in uris)
+
+        var tasks = uris.Select(async uri =>
         {
-            tasks.Add(Task.Run(async () =>
-            {
-                var resp = await http.GetAsync(uri);
-                var bytes = await resp.Content.ReadAsByteArrayAsync();
-                files.Add(new DFile(Path.GetFileName(uri.AbsolutePath), bytes, false));
-            }));
+            var bytes = await http.GetByteArrayAsync(uri);
+            return new DFile(Path.GetFileName(uri.AbsolutePath), bytes);
+        }).ToList();
+
+        while (tasks.Count > 0)
+        {
+            var finished = await Task.WhenAny(tasks);
+            tasks.Remove(finished);
+            yield return await finished;
         }
-        await Task.WhenAll(tasks);
-        return files;
     }
 
     internal static T ExtractFromJson<T>(string json, string key)

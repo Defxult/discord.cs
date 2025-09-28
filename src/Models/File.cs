@@ -194,7 +194,9 @@ public abstract class Downloadable
     /// <returns>The downloadable as a file.</returns>
     public async Task<DFile> DownloadAsync(TimeSpan? timeout = null)
     {
-        var files = await Util.DownloadAsync([new Uri(Url)], timeout);
-        return files.FirstOrDefault()!;
+        DFile? f = null;
+        await foreach (var file in Util.DownloadAsync([new Uri(Url)], timeout))
+            f = file;
+        return f!;
     }
 }
