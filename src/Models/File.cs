@@ -21,10 +21,10 @@ public record DFile
     /// <summary>
     /// Whether the file is blurred as a spoiler.
     /// </summary>
-    public bool IsSpoiler => Name.StartsWith(SpoilerFlag);
-    
-    internal string? _mimeTypeBase64;
-    internal string? _mimeType;
+    public bool Spoiler => Name.StartsWith(SpoilerFlag);
+
+    internal string _mimeTypeBase64;
+    internal string _mimeType;
     private const string SpoilerFlag = "SPOILER_";
     
     /// <summary>

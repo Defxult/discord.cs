@@ -101,7 +101,7 @@ public class Role : IEquatable<Role>
     public bool PremiumSubscriber { get; }
 
     /// <summary>
-    /// Whether this is the @everyone role.
+    /// Whether this is the <c>@everyone</c> role.
     /// </summary>
     public bool Default => Id == GuildId;
 

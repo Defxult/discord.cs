@@ -10,7 +10,7 @@ namespace Discord.Models;
 /// </summary>
 public class Emoji : IEquatable<Emoji>
 {
-    internal static Regex EmojiRegex = new("<a?:.+?:[0-9]{17,20}>");
+    internal static readonly Regex EmojiRegex = new("<a?:.+?:[0-9]{17,20}>");
 
     /// <summary>
     /// Emoji ID.
