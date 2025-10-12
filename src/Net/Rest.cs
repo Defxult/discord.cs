@@ -453,50 +453,200 @@ internal class Rest
                 maxConcurrency = Convert.ToInt32(sessionObj["max_concurrency"])
             }
         };
-        Console.WriteLine(obj);
         return (
-            obj.url + "", 
-            obj.shards, 
+            obj.url + "",
+            obj.shards,
             obj.sessionStartLimit.total,
             obj.sessionStartLimit.remaining,
-            obj.sessionStartLimit.resetAfter, 
+            obj.sessionStartLimit.resetAfter,
             obj.sessionStartLimit.maxConcurrency
-            );
+        );
     }
 
-    private async Task<string> RequestAsync(HttpMethod method, string route, object? data  = null, string? auditReason = null)
+    private class RateLimitBucket
     {
-        using HttpRequestMessage request = new(method, route);
-        if (data != null)
-            request.Content = data is MultipartFormDataContent form ? form: ToStringContent(data);
-        
-        if  (auditReason != null)
-            request.Headers.Add("X-Audit-Log-Reason", auditReason);
-        
-        using HttpResponseMessage response = await _http.SendAsync(request);
-        
-        // Convert the received data into something we can read.
-        var payload = await response.Content.ReadAsStringAsync();
-        
-        // Verify the status code. If OK, return the response. Otherwise, throw the appropriate error.
-        if (response.IsSuccessStatusCode)
-            return payload;
-        
-        var errorPayload = JsonConvert.DeserializeObject<JSON>(payload)!;
-        errorPayload.TryGetValue("message", out object? errorMessage);
-        var message = Convert.ToString(errorMessage)!;
+        public int Limit { get; set; }
+        public int Remaining { get; set; }
+        public DateTimeOffset ResetAt { get; set; }
+        public Queue<(HttpRequestMessage request, TaskCompletionSource<string> tcs)> Queue { get; } = new();
+        public bool IsProcessing { get; set; }
+    }
 
-        throw (int)response.StatusCode switch
+    private async Task<string> RequestAsync(HttpMethod method, string route, object? data = null, string? auditReason = null)
+    {
+        string bucketKey = GetBucketKey(route);
+
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var request = new HttpRequestMessage(method, route);
+        if (data != null)
+            request.Content = data is MultipartFormDataContent form ? form : ToStringContent(data);
+
+        if (auditReason != null)
+            request.Headers.Add("X-Audit-Log-Reason", auditReason);
+
+        RateLimitBucket bucket;
+        lock (_bucketLock)
         {
-            400 => new BadRequestException(message),
-            401 => new UnauthorizedException(message),
-            403 => new ForbiddenException(message),
-            404 => new NotFoundException(message),
-            405 => new MethodNotAllowedException(message),
-            429 => new HttpException($"Error 429 TODO ({(int)response.StatusCode}) - {message}"),
-            502 => new GatewayUnavailableException(message),
-            _ => new HttpException($"Code {(int)response.StatusCode} - {message}")
-        };
+            if (!_buckets.TryGetValue(bucketKey, out bucket))
+            {
+                bucket = new RateLimitBucket { Remaining = int.MaxValue, ResetAt = DateTimeOffset.UtcNow };
+                _buckets[bucketKey] = bucket;
+            }
+
+            bucket.Queue.Enqueue((request, tcs));
+
+            if (!bucket.IsProcessing)
+            {
+                bucket.IsProcessing = true;
+                _ = ProcessBucket(bucketKey, bucket);
+            }
+        }
+
+        return await tcs.Task;
+    }
+
+    private async Task ProcessBucket(string bucketKey, RateLimitBucket bucket)
+    {
+        while (true)
+        {
+            (HttpRequestMessage request, TaskCompletionSource<string> tcs) item;
+
+            lock (_bucketLock)
+            {
+                if (bucket.Queue.Count == 0)
+                {
+                    bucket.IsProcessing = false;
+                    return;
+                }
+
+                item = bucket.Queue.Peek();
+            }
+
+            // Global rate limit check
+            await _globalSemaphore.WaitAsync();
+            try
+            {
+                if (_globalResetAt > DateTimeOffset.UtcNow)
+                {
+                    var delay = _globalResetAt - DateTimeOffset.UtcNow;
+                    Dev.Log($"[RateLimit] Global rate limit active, waiting {delay.TotalMilliseconds}ms");
+                    await Task.Delay(delay);
+                }
+            }
+            finally
+            {
+                _globalSemaphore.Release();
+            }
+
+            // Preemptive delay if bucket exhausted
+            if (bucket.Remaining <= 0 && bucket.ResetAt > DateTimeOffset.UtcNow)
+            {
+                var delay = bucket.ResetAt - DateTimeOffset.UtcNow;
+                Dev.Log($"[RateLimit] Waiting {delay.TotalMilliseconds}ms for bucket {bucketKey}");
+                await Task.Delay(delay);
+            }
+
+            var payload = string.Empty;
+            try
+            {
+                using var response = await _http.SendAsync(item.request);
+                payload = await response.Content.ReadAsStringAsync();
+
+                UpdateBucketFromHeaders(bucketKey, bucket, response.Headers);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    item.tcs.TrySetResult(payload);
+                }
+                else if ((int)response.StatusCode == 429)
+                {
+                    // Retry-After handling
+                    var retryAfterMs = response.Headers.TryGetValues("Retry-After", out var values)
+                        ? (int)(double.Parse(values.First(), System.Globalization.CultureInfo.InvariantCulture) * 1000)
+                        : 1000;
+
+                    bool isGlobal = response.Headers.TryGetValues("X-RateLimit-Global", out var globalVals)
+                                    && globalVals.FirstOrDefault()
+                                        ?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
+
+                    if (isGlobal)
+                    {
+                        await _globalSemaphore.WaitAsync();
+                        try
+                        {
+                            _globalResetAt = DateTimeOffset.UtcNow.AddMilliseconds(retryAfterMs);
+                        }
+                        finally
+                        {
+                            _globalSemaphore.Release();
+                        }
+
+                        Dev.Log($"[RateLimit] GLOBAL 429, pausing all requests for {retryAfterMs}ms");
+                    }
+                    else
+                    {
+                        Dev.Log($"[RateLimit] 429 on {bucketKey}, retrying after {retryAfterMs}ms");
+                    }
+
+                    await Task.Delay(retryAfterMs);
+                    continue; // retry same request
+                }
+                else
+                {
+                    var errorPayload = JsonConvert.DeserializeObject<JSON>(payload)!;
+                    errorPayload.TryGetValue("message", out object? errorMessage);
+                    var message = Convert.ToString(errorMessage) ?? "Unknown error";
+
+                    Exception ex = (int)response.StatusCode switch
+                    {
+                        400 => new BadRequestException(message),
+                        401 => new UnauthorizedException(message),
+                        403 => new ForbiddenException(message),
+                        404 => new NotFoundException(message),
+                        405 => new MethodNotAllowedException(message),
+                        502 => new GatewayUnavailableException(message),
+                        _ => new HttpException($"Code {(int)response.StatusCode} - {message}")
+                    };
+
+                    item.tcs.TrySetException(ex);
+                }
+            }
+            catch (Exception ex)
+            {
+                item.tcs.TrySetException(ex);
+            }
+
+            // Finished request → remove from queue
+            lock (_bucketLock)
+            {
+                if (bucket.Queue.Count > 0)
+                    bucket.Queue.Dequeue();
+            }
+        }
+    }
+
+    private void UpdateBucketFromHeaders(string bucketKey, RateLimitBucket bucket, HttpResponseHeaders headers)
+    {
+        if (headers.TryGetValues("X-RateLimit-Limit", out var limitVals))
+            bucket.Limit = int.Parse(limitVals.First());
+
+        if (headers.TryGetValues("X-RateLimit-Remaining", out var remVals))
+            bucket.Remaining = int.Parse(remVals.First());
+
+        if (headers.TryGetValues("X-RateLimit-Reset-After", out var resetVals))
+        {
+            var resetAfter = double.Parse(resetVals.First(), System.Globalization.CultureInfo.InvariantCulture);
+            bucket.ResetAt = DateTimeOffset.UtcNow.AddSeconds(resetAfter);
+        }
+
+        _buckets[bucketKey] = bucket;
+    }
+
+    private static string GetBucketKey(string route)
+    {
+        // normalize route (replace major IDs with {id})
+        return System.Text.RegularExpressions.Regex.Replace(route, @"\d{5,}", "{id}");
     }
 }
 
