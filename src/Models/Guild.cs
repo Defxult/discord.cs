@@ -294,11 +294,83 @@ public class Guild : IEquatable<Guild>
     #region PUBLIC
 
     /// <summary>
+    /// Requests all emojis in the guild.
+    /// </summary>
+    /// <returns>All emojis in the guild.</returns>
+    /// <remarks>It's generally preferred to use <see cref="Emojis"/> unless this is needed.</remarks>
+    public async Task<IReadOnlyCollection<Emoji>> RequestEmojisAsync() =>
+        await Bot!._rest.ListGuildEmojisAsync(Id);
+
+    /// <summary>
+    /// Requests an emoji in the guild.
+    /// </summary>
+    /// <returns>The requested emoji.</returns>
+    /// <remarks>Unlike <see cref="GetEmoji"/> this is an API call.</remarks>
+    public async Task<Emoji> RequestEmojiAsync(ulong id) =>
+        await Bot!._rest.GetGuildEmojiAsync(Id, id);
+    
+    /// <summary>
+    /// Creates a new emoji for the guild.
+    /// </summary>
+    /// <param name="name">Emoji name.</param>
+    /// <param name="image">The 128x128 emoji image.</param>
+    /// <param name="roles">Roles allowed to use this emoji.</param>
+    /// <param name="reason">Reason for creating the emoji. This is displayed in the audit-log.</param>
+    /// <returns>The newly created emoji.</returns>
+    public async Task<Emoji> CreateEmojiAsync(string name, DFile image, IReadOnlyCollection<Role>? roles = null, string? reason = null) =>
+        await Bot!._rest.CreateGuildEmojiAsync(Id, name, image, roles ?? [], reason);
+
+    /// <summary>
+    /// Access an emoji from the cache.
+    /// </summary>
+    /// <param name="id">ID of the emoji.</param>
+    /// <returns>The emoji with the given ID or <c>null</c> if not found.</returns>
+    /// <remarks>This method is generally preferred compared to <see cref="RequestEmojiAsync"/>.</remarks>
+    public Emoji? GetEmoji(ulong id) =>
+        Emojis.FirstOrDefault(e => e.Id == id);
+
+    /// <summary>
+    /// Create a scheduled event.
+    /// </summary>
+    /// <param name="name">Name of the scheduled event.</param>
+    /// <param name="startTime">The time to schedule the scheduled event.</param>
+    /// <param name="entityType">Entity type of the scheduled event.</param>
+    /// <param name="endTime">The time when the scheduled event is scheduled to end. Required for events of entity type <see cref="ScheduledEventEntityType.External"/>.</param>
+    /// <param name="channelId">Channel ID of the scheduled event. Optional for events of entity type <see cref="ScheduledEventEntityType.External"/>.</param>
+    /// <param name="location">Location of the event (1-100 characters). Optional for events of entity type <see cref="ScheduledEventEntityType.External"/>.</param>
+    /// <param name="description">Description of the scheduled event.</param>
+    /// <param name="image">Cover image of the scheduled event.</param>
+    /// <param name="recurrence">The definition for how often this event should recur.</param>
+    /// <param name="reason">Reason for creating the scheduled event. This is displayed in the audit-log.</param>
+    /// <returns>The scheduled event that was created.</returns>
+    public async Task<ScheduledEvent> CreateScheduledEventAsync(
+        string name,
+        DateTime startTime,
+        ScheduledEventEntityType entityType,
+        DateTime? endTime = null,
+        ulong? channelId = null,
+        string? location = null,
+        string? description = null,
+        DFile? image = null,
+        RecurrenceRule? recurrence = null,
+        string? reason = null
+    ) => await Bot!._rest.CreateGuildScheduledEventAsync(
+        Id, name, startTime, endTime, channelId, location, description, entityType, image, recurrence, reason);
+
+    /// <summary>
     /// Requests scheduled events for the guild.
     /// </summary>
     /// <returns>All scheduled events for the guild.</returns>
     public async Task<IReadOnlyCollection<ScheduledEvent>> RequestScheduledEventsAsync() =>
         await Bot!._rest.ListScheduledEventsForGuildAsync(Id);
+
+    /// <summary>
+    /// Requests a scheduled event.
+    /// </summary>
+    /// <param name="id">ID of the scheduled event.</param>
+    /// <returns>The requested scheduled event.</returns>
+    public async Task<ScheduledEvent> RequestScheduledEventAsync(ulong id) =>
+        await Bot!._rest.GetGuildScheduledEventAsync(Id, id);
 
     /// <summary>
     /// Creates a guild sticker.
@@ -319,12 +391,32 @@ public class Guild : IEquatable<Guild>
         await Bot!._rest.ListGuildStickersAsync(Id);
     
     /// <summary>
-    /// Requests a specific guild sticker.
+    /// Requests a specific guild sticker. Unlike <see cref="GetSticker"/>, this is an API call.
     /// </summary>
     /// <param name="id">Sticker ID.</param>
     /// <returns>The requested sticker</returns>
     public async Task<GuildSticker> RequestStickerAsync(ulong id) =>
         await Bot!._rest.GetGuildStickerAsync(Id, id);
+    
+    /// <summary>
+    /// Retrieves a sticker from the cache.
+    /// </summary>
+    /// <param name="id">ID of the sticker.</param>
+    /// <returns>The sticker with the provided ID or <c>null</c> if not found.</returns>
+    /// <remarks>This method is generally preferred compared to <see cref="RequestStickerAsync"/>.</remarks>
+    public GuildSticker? GetSticker(ulong id) =>
+        Stickers.FirstOrDefault(s => s.Id == id);
+    
+    
+    
+    
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="id"></param>
+    /// <returns></returns>
+    public Role? GetRole(ulong id) => Roles.FirstOrDefault(r => r.Id == id);
     
     #endregion
 
@@ -619,6 +711,7 @@ public struct GuildEdit
     }
 }
 
+// TODO
 // /// <summary>
 // /// Represents a <see cref="Guild"/> preview.
 // /// </summary>
@@ -841,6 +934,133 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
     public override bool Equals(object? other) => other is ScheduledEvent scheduledEvent && Equals(scheduledEvent);
     public bool Equals(ScheduledEvent? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
+
+    /// <summary>
+    /// Starts the scheduled event.
+    /// </summary>
+    /// <param name="reason">The reason for starting the scheduled event. This is displayed in the audit-log.</param>
+    /// <returns>The updated scheduled event.</returns>
+    public async Task<ScheduledEvent> StartAsync(string? reason = null)
+    {
+        if (Status == ScheduledEventStatus.Scheduled)
+            return await Bot!._rest.ModifyGuildScheduledEventAsync(GuildId, Id,
+            new JSON { { "status", ScheduledEventStatus.Active } }, reason);
+        return this;
+    }
+    
+    /// <summary>
+    /// Cancels/ends the scheduled event.
+    /// </summary>
+    /// <param name="reason">The reason for canceling/ending the scheduled event. This is displayed in the audit-log.</param>
+    /// <returns>The updated scheduled event.</returns>
+    public async Task<ScheduledEvent> StopAsync(string? reason = null)
+    {
+        return Status switch
+        {
+            ScheduledEventStatus.Active => await Bot!._rest.ModifyGuildScheduledEventAsync(GuildId, Id,
+                new JSON { { "status", ScheduledEventStatus.Completed } }, reason),
+            ScheduledEventStatus.Scheduled => await Bot!._rest.ModifyGuildScheduledEventAsync(GuildId, Id,
+                new JSON { { "status", ScheduledEventStatus.Canceled } }, reason),
+            _ => this
+        };
+    }
+
+    /// <summary>
+    /// Edit the scheduled event.
+    /// </summary>
+    /// <param name="edit"></param>
+    /// <param name="reason">The reason for editing the scheduled event. This is displayed in the audit-log.</param>
+    /// <returns></returns>
+    public async Task<ScheduledEvent> EditAsync(ScheduledEventEdit edit, string? reason = null) =>
+        await Bot!._rest.ModifyGuildScheduledEventAsync(GuildId, Id, edit._payload, reason);
+
+    /// <summary>
+    /// Delete the scheduled event.
+    /// </summary>
+    public async Task DeleteAsync()
+    {
+        await Bot!._rest.DeleteGuildScheduledEventAsync(GuildId, Id);
+    }
+}
+
+/// <summary>
+/// Represents the values that can be edited for a scheduled event via <see cref="ScheduledEvent.EditAsync(GuildEdit, string?)"/> 
+/// </summary>
+public struct ScheduledEventEdit
+{
+    internal JSON _payload = [];
+    
+    /// <summary>
+    /// Initializes a new scheduled event edit instance.
+    /// </summary>
+    public ScheduledEventEdit() { }
+    
+    public ScheduledEventEdit SetChannelId(ulong? id)
+    {
+        _payload["channel_id"] = id;
+        return this;
+    }
+
+    public ScheduledEventEdit SetLocation(string? location)
+    {
+        if (location != null)
+            _payload["entity_metadata"] = new JSON { { "location", location } };
+        else
+            _payload["entity_metadata"] = null;
+        return this;
+    }
+    
+    public ScheduledEventEdit SetName(string name)
+    {
+        _payload["name"] = name;
+        return this;
+    }
+    
+    public ScheduledEventEdit SetScheduledStartTime(DateTime startTime)
+    {
+        _payload["scheduled_start_time"] = startTime.ToString("0");
+        return this;
+    }
+    
+    public ScheduledEventEdit SetScheduledEndTime(DateTime endTime)
+    {
+        _payload["scheduled_end_time"] = endTime.ToString("0");
+        return this;
+    }
+    
+    public ScheduledEventEdit SetDescription(string? description)
+    {
+        _payload["description"] = description;
+        return this;
+    }
+    
+    /// <summary>
+    /// If setting the entity type to <see cref="ScheduledEventEntityType.External"/>, the following is <b>required</b>:
+    /// <list type="bullet">
+    ///     <item>Channel ID must be set to <c>null</c></item>
+    ///     <item>Location must be set</item>
+    ///     <item>Scheduled end time must be set</item>
+    /// </list>
+    /// </summary>
+    /// <param name="type">Entity type.</param>
+    /// <returns>The edit instance.</returns>
+    public ScheduledEventEdit SetEntityType(ScheduledEventEntityType type)
+    {
+        _payload["entity_type"] = type;
+        return this;
+    }
+    
+    public ScheduledEventEdit SetImage(DFile image)
+    {
+        _payload["image"] = image._mimeTypeBase64;
+        return this;
+    }
+    
+    public ScheduledEventEdit SetRecurrenceRule(RecurrenceRule? rule)
+    {
+        _payload["recurrence_rule"] = rule;
+        return this;
+    }
 }
 
 /// <summary>
@@ -910,7 +1130,34 @@ public record RecurrenceRule
     /// </summary>
     [JsonProperty("count")]
     public int? Count { get; init; }
+
+    /// <summary>
+    /// Initializes a default recurrence rule as follows:
+    /// <list type="bullet">
+    ///     <item>Start: in 1 hour</item>
+    ///     <item>Frequency: weekly</item>
+    ///     <item>Interval: once per week</item>
+    /// </list>
+    /// </summary>
+    public RecurrenceRule()
+    {
+        Start = DateTime.UtcNow.AddHours(1);
+        Frequency = RecurrenceRuleFrequency.Weekly;
+        Interval = 1;
+    }
     
+    /// <summary>
+    /// Initializes a recurrence rule.
+    /// </summary>
+    /// <param name="start">Starting time of the recurrence interval.</param>
+    /// <param name="frequency">How often the event occurs.</param>
+    /// <param name="interval">The spacing between the events, defined by <see cref="Frequency"/>.</param>
+    public RecurrenceRule(DateTime start, RecurrenceRuleFrequency frequency, int interval)
+    {
+        Start = start;
+        Frequency = frequency;
+        Interval = interval;
+    }
 }
 
 /// <summary>
@@ -968,7 +1215,7 @@ public record RecurrenceRuleFrequencyNWeekday
     /// The week to reoccur on (1 - 5).
     /// </summary>
     [JsonProperty("n")]
-    public int Week { get; init; }
+    public int N { get; init; }
     
     /// <summary>
     /// The day within the week to reoccur on.
@@ -1060,7 +1307,6 @@ public record WelcomeScreenChannel
     [JsonProperty("emoji_name")]
     public string? EmojiName { get; init; }
 }
-
 
 /// <summary>
 /// Represents the status of a <see cref="ScheduledEvent"/>.
