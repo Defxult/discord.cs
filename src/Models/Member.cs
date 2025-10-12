@@ -67,9 +67,8 @@ public class Member : IEquatable<Member>
     /// <summary>
     /// The member flags. Contains information such as <see cref="MemberFlags.DidRejoin"/> and more.
     /// </summary>
-    public IReadOnlySet<MemberFlags> Flags => _flags;
-    private HashSet<MemberFlags> _flags;
-
+    public IReadOnlySet<MemberFlags> Flags { get; internal set; }
+    
     /// <summary>
     /// Whether the member has not yet passed the guild's Membership Screening requirements.
     /// </summary>
@@ -87,7 +86,7 @@ public class Member : IEquatable<Member>
     [JsonProperty("communication_disabled_until")]
     public DateTime? TimedOutUntil { get; internal set; }
 
-    #region API Separated
+    #region CUSTOM
     
     /// <summary>
     /// The member's ID. This is a shortcut that is accessing the value from the <see cref="User"/> property. If said
@@ -95,17 +94,12 @@ public class Member : IEquatable<Member>
     /// </summary>
     public ulong? Id => User?.Id;
 
-    /// <summary>
-    /// The guild this member belongs to.
-    /// </summary>
-    // public Guild Guild { get; internal set; } // This is initialized in GUILD_CREATE/`SetBotAndGuild()`.
-
     #endregion
 
     [JsonConstructor]
     internal Member(int flags, ulong? permissions)
     {
-        _flags = GetMemberFlags(flags);
+        Flags = GetMemberFlags(flags);
         if (permissions is { } value)
             Permissions = new Permissions(value);
     }

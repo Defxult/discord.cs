@@ -43,7 +43,7 @@ public class Embed
     /// </summary>
     [JsonIgnore]
     public Color? Color;
-    [JsonProperty("color", NullValueHandling = NullValueHandling.Ignore)] private int? _color => Color?.Value;
+    [JsonProperty("color", NullValueHandling = NullValueHandling.Ignore)] private int? _color => Color?.Value; // TODO
 
     /// <summary>
     /// Footer information.
@@ -85,7 +85,7 @@ public class Embed
     /// Embed fields (max 25).
     /// </summary>
     [JsonProperty("fields", NullValueHandling = NullValueHandling.Ignore)]
-    public List<EmbedField>? Fields;
+    public ICollection<EmbedField>? Fields;
 
     /// <summary>
     /// Total number of characters in the embed (max 6000).
@@ -123,9 +123,7 @@ public class Embed
         Color = color != 0 ? new Color(color) : null;
         Type = GetEmbedType(type);
     }
-
-    #region Public
-
+    
     /// <summary>
     /// Creates a copy of an embed.
     /// </summary>
@@ -151,10 +149,6 @@ public class Embed
         Timestamp = null;
     }
 
-    #endregion
-
-    #region Private
-
     private static EmbedType GetEmbedType(string type)
     {
         return type switch
@@ -179,8 +173,6 @@ public class Embed
         }
         return convertedEmbeds;
     }
-
-    #endregion
 }
 
 /// <summary>

@@ -41,13 +41,13 @@ public class User : IEquatable<User>
     /// Whether the user is a bot.
     /// </summary>
     [JsonProperty("bot")]
-    public bool IsBot { get; }
+    public bool IsBot { get; init; }
 
     /// <summary>
     /// Whether the user is an Official Discord System user (part of the urgent message system).
     /// </summary>
     [JsonProperty("system")]
-    public bool IsSystem { get; }
+    public bool IsSystem { get; init; }
 
     /// <summary>
     /// The user's banner.

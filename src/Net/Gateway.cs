@@ -142,7 +142,7 @@ public sealed class DiscordGatewayClient
     //         instant ? WebSocketCloseStatus.NormalClosure : WebSocketCloseStatus.Empty,
     //         string.Empty, 
     //         _cts.Token);
-    //     await _cts.CancelAsync();
+    //     await _cts.CompleteAsync();
     // }
 
     // Resets values associated with the gateway that would indicate a new connection.
@@ -197,7 +197,7 @@ public sealed class DiscordGatewayClient
                 await ConnectAsync(true);
                 break;
             case 4000:
-                Dev.Log("[GW] Unknown error/Discord wasn't sure what went wrong - resuming session", ConsoleColor.Yellow);
+                Dev.Log("[GW] Unknown error/Discord wasn't sure what went wrong - resuming session");
                 await ConnectAsync(true);
                 break;
             case 4001:
@@ -207,8 +207,7 @@ public sealed class DiscordGatewayClient
                 throw new DecodeErrorException("An invalid payload was sent");
             case 4003:
                 Dev.Log(
-                    "A payload prior to identifying was sent, or this session has been invalidated - starting a new session",
-                    ConsoleColor.Red);
+                    "A payload prior to identifying was sent, or this session has been invalidated - starting a new session");
                 await ConnectAsync(false);
                 break;
             case 4004:
@@ -217,16 +216,15 @@ public sealed class DiscordGatewayClient
             case 4005:
                 throw new AlreadyAuthenticatedException("More than one identify payload was sent");
             case 4007:
-                Dev.Log("The sequence sent when resuming the session was invalid - starting a new session",
-                    ConsoleColor.Red);
+                Dev.Log("The sequence sent when resuming the session was invalid - starting a new session");
                 await ConnectAsync(false);
                 break;
             case 4008:
-                Dev.Log("Payloads are being sent too quickly - resuming session", ConsoleColor.Red);
+                Dev.Log("Payloads are being sent too quickly - resuming session");
                 await ConnectAsync(true);
                 break;
             case 4009:
-                Dev.Log("Session timed out - starting new session", ConsoleColor.Red);
+                Dev.Log("Session timed out - starting new session");
                 await ConnectAsync(false);
                 break;
             case 4010:
@@ -320,7 +318,7 @@ public sealed class DiscordGatewayClient
         }
         catch (Exception ex)
         {
-            Dev.Log($"[GW ERROR] - {ex.Message}", ConsoleColor.Red);
+            Dev.Log($"[GW ERROR] - {ex.Message}");
             return null;
         }
     }
@@ -372,7 +370,6 @@ public sealed class DiscordGatewayClient
     internal static T DeserializeWithNewtonsoft<T>(JsonElement element)
     {
         string json = element.GetRawText();
-        //Console.WriteLine(json + "\n\n\n");
         return JsonConvert.DeserializeObject<T>(json)!;
     }
     
@@ -391,7 +388,7 @@ public sealed class DiscordGatewayClient
                         Dev.Log($"[GW] READY received, session ID: {_sessionId}");
                         break;
                     case "RESUMED":
-                        Dev.Log("[GW] Successfully resumed", ConsoleColor.Green);
+                        Dev.Log("[GW] Successfully resumed");
                         break;
                     case "MESSAGE_CREATE":
                         var messageCreated = DeserializeWithNewtonsoft<Message>(payload.D!.Value);
@@ -404,6 +401,7 @@ public sealed class DiscordGatewayClient
                     case "GUILD_CREATE":
                         var guildCreated = DeserializeWithNewtonsoft<Guild>(payload.D!.Value);
                         guildCreated.Bot = _bot;
+                        guildCreated._emojis.ForEach(e => { _bot._rest.SetEmojiValues(e, guildCreated.Id); });
                         _bot._guilds.Add(guildCreated);
                         break;
                 }
@@ -416,13 +414,13 @@ public sealed class DiscordGatewayClient
                 break;
             
             case 7: // Reconnect
-                Dev.Log("[GW] RECONNECT request received - resuming session", ConsoleColor.Yellow);
+                Dev.Log("[GW] RECONNECT request received - resuming session");
                 await ConnectAsync(true);
                 break;
 
             case 9: // Invalid Session
                 var resumable = GetElementValue(payload.D!.Value, "d").GetBoolean();
-                Dev.Log($"[GW] INVALID SESSION received, resumable: {resumable}", ConsoleColor.Red);
+                Dev.Log($"[GW] INVALID SESSION received, resumable: {resumable}");
                 if (resumable)
                     await ConnectAsync(true);
                 else
