@@ -233,7 +233,95 @@ internal class Rest
         events.ForEach(e => e.Bot = _bot);
         return events;
     }
-    
+
+    // Create a guild scheduled event in the guild. Returns a guild scheduled event object on success.
+    // Fires a Guild Scheduled Event Create Gateway event.
+    // https://discord.com/developers/docs/resources/guild-scheduled-event#create-guild-scheduled-event
+    internal async Task<ScheduledEvent> CreateGuildScheduledEventAsync(
+        ulong guildId,
+        string name,
+        DateTime startTime,
+        DateTime? endTime,
+        ulong? channelId,
+        string? location,
+        string? description,
+        ScheduledEventEntityType entityType,
+        DFile? image,
+        RecurrenceRule? recurrence,
+        string? reason
+    )
+    {
+        JSON payload = new()
+        {
+            { "name", name },
+            { "scheduled_start_time", startTime.ToString("O") },
+            { "entity_type", (int)entityType },
+            { "privacy_level", (int)ScheduledEventPrivacyLevel.GuildOnly }
+        };
+
+        if (endTime is { } et)
+            payload.Add("scheduled_end_time", et.ToString("O"));
+        if (channelId is { } cid)
+            payload.Add("channel_id", cid);
+        if (location != null)
+            if (entityType == ScheduledEventEntityType.External)
+            {
+                var meta = new JSON { { "location", location } };
+                payload.Add("entity_metadata", meta);
+            }
+
+        if (description != null)
+            payload.Add("description", description);
+        if (image is not null)
+            payload.Add("image", image._mimeTypeBase64);
+        if (recurrence is not null)
+            payload.Add("recurrence_rule", recurrence);
+
+        string data = await RequestAsync(Post, Route($"/guilds/{guildId}/scheduled-events"), payload, reason);
+        var evt = JsonConvert.DeserializeObject<ScheduledEvent>(data)!;
+        evt.Bot = _bot;
+        return evt;
+    }
+
+    // Get a guild scheduled event. Returns a guild scheduled event object on success.
+    // https://discord.com/developers/docs/resources/guild-scheduled-event#get-guild-scheduled-event
+    internal async Task<ScheduledEvent> GetGuildScheduledEventAsync(ulong guildId, ulong eventId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/scheduled-events/{eventId}"));
+        var evt = JsonConvert.DeserializeObject<ScheduledEvent>(data)!;
+        evt.Bot = _bot;
+        return evt;
+    }
+
+    // Modify a guild scheduled event. Returns the modified guild scheduled event object on success.
+    // Fires a Guild Scheduled Event Update Gateway event.
+    // https://discord.com/developers/docs/resources/guild-scheduled-event#modify-guild-scheduled-event
+    internal async Task<ScheduledEvent> ModifyGuildScheduledEventAsync(ulong guildId, ulong eventId, JSON payload,
+        string? reason)
+    {
+        string data =
+            await RequestAsync(Patch, Route($"/guilds/{guildId}/scheduled-events/{eventId}"), payload, reason);
+        var evt = JsonConvert.DeserializeObject<ScheduledEvent>(data)!;
+        evt.Bot = _bot;
+        return evt;
+    }
+
+    // Delete a guild scheduled event. Returns a 204 on success. Fires a Guild Scheduled Event Delete Gateway event.
+    // https://discord.com/developers/docs/resources/guild-scheduled-event#delete-guild-scheduled-event
+    internal async Task DeleteGuildScheduledEventAsync(ulong guildId, ulong eventId)
+    {
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/scheduled-events/{eventId}"));
+    }
+
+    // Get a list of guild scheduled event users subscribed to a guild scheduled event. Returns a list of guild scheduled
+    // event user objects on success. Guild member data, if it exists, is included if the with_member query parameter is set.
+    // https://discord.com/developers/docs/resources/guild-scheduled-event#get-guild-scheduled-event-users
+    internal async Task GetGuildScheduledEventUsers(ulong guildId, ulong eventId)
+    {
+        // TODO
+        throw new NotImplementedException();
+    }
+
     #endregion
 
     #region STICKER

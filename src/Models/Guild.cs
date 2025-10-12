@@ -12,7 +12,7 @@ namespace Discord.Models;
 /// </summary>
 public class Guild : IEquatable<Guild>
 {
-    #region Properties
+    #region PROPERTIES
     
     /// <summary>
     /// Guild ID.
@@ -100,20 +100,20 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Verification level required for the guild.
     /// </summary>
-    public GuildVerificationLevel VerificationLevel => (GuildVerificationLevel)_verificationLevel;
-    [JsonProperty("verification_level")] internal int _verificationLevel;
+    [JsonProperty("verification_level")]
+    public GuildVerificationLevel VerificationLevel { get; internal set; }
     
     /// <summary>
     /// Default message notification level.
     /// </summary>
-    public GuildMessageNotificationLevel DefaultMessageNotificationsLevel=> (GuildMessageNotificationLevel)_defaultMessageNotifications;
-    [JsonProperty("default_message_notifications")] internal int _defaultMessageNotifications;
+    [JsonProperty("default_message_notifications")]
+    public GuildMessageNotificationLevel DefaultMessageNotificationsLevel {  get; internal set; }
     
     /// <summary>
     /// Explicit content filter level.
     /// </summary>
-    public GuildExplicitContentFilterLevel ExplicitContentFilterLevel => (GuildExplicitContentFilterLevel)_explicitContentFilter;
-    [JsonProperty("explicit_content_filter")] internal int _explicitContentFilter;
+    [JsonProperty("explicit_content_filter")]
+    public GuildExplicitContentFilterLevel ExplicitContentFilterLevel { get; internal set; }
     
     /// <summary>
     /// Roles in the guild.
@@ -274,7 +274,7 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Your bot instance.
     /// </summary>
-    public Bot? Bot {  get; internal set; } // Set in GUILD_CREATE
+    public Bot? Bot {  get; internal set; }
     
     #endregion
     
