@@ -81,6 +81,144 @@ internal class Rest
     }
 
     #endregion
+
+    #region EMOJI
+
+    internal void SetEmojiValues(Emoji e, ulong? guildId)
+    {
+        e.GuildId = guildId;
+        e.Bot = _bot;
+    }
+
+    // Returns a list of emoji objects for the given guild. Includes user fields if the bot has the CREATE_GUILD_EXPRESSIONS
+    // or MANAGE_GUILD_EXPRESSIONS permission.
+    // https://discord.com/developers/docs/resources/emoji#list-guild-emojis
+    internal async Task<List<Emoji>> ListGuildEmojisAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/emojis"));
+        var emojis = JsonConvert.DeserializeObject<List<Emoji>>(data)!;
+        emojis.ForEach(e => { SetEmojiValues(e, guildId); });
+        return emojis;
+    }
+    
+    // Returns an emoji object for the given guild and emoji IDs. Includes the user field if the bot has the
+    // MANAGE_GUILD_EXPRESSIONS permission, or if the bot created the emoji and has the CREATE_GUILD_EXPRESSIONS permission.
+    // https://discord.com/developers/docs/resources/emoji#get-guild-emoji
+    internal async Task<Emoji> GetGuildEmojiAsync(ulong guildId, ulong emojiId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/emojis/{emojiId}"));
+        var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
+        SetEmojiValues(emoji, guildId);
+        return emoji;
+    }
+    
+    // Create a new emoji for the guild. Requires the CREATE_GUILD_EXPRESSIONS permission. Returns the new emoji object
+    // on success. Fires a Guild Emojis Update Gateway event.
+    // 
+    // Emojis and animated emojis have a maximum file size of 256 KiB. Attempting to upload an emoji larger than this
+    // limit will fail and return 400 Bad Request and an error message, but not a JSON status code.
+    // https://discord.com/developers/docs/resources/emoji#create-guild-emoji
+    internal async Task<Emoji> CreateGuildEmojiAsync(ulong guildId, string name, DFile file, IReadOnlyCollection<Role> roles, string? reason)
+    {
+        var payload = new JSON
+        {
+            { "name", name },
+            { "image", file._mimeTypeBase64 },
+            { "roles", roles.Select(f => f.Id) }
+        };
+        string data = await RequestAsync(Post, Route($"/guilds/{guildId}/emojis"), payload, reason);
+        var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
+        SetEmojiValues(emoji, guildId);
+        return emoji;
+    }
+    
+    // Modify the given emoji. For emojis created by the current user, requires either the CREATE_GUILD_EXPRESSIONS or
+    // MANAGE_GUILD_EXPRESSIONS permission. For other emojis, requires the MANAGE_GUILD_EXPRESSIONS permission.
+    // Returns the updated emoji object on success. Fires a Guild Emojis Update Gateway event.
+    // https://discord.com/developers/docs/resources/emoji#modify-guild-emoji
+    internal async Task<Emoji> ModifyGuildEmojiAsync(ulong guildId, ulong emojiId, EmojiEdit edit, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/emojis/{emojiId}"), edit._payload, reason);
+        var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
+        SetEmojiValues(emoji, guildId);
+        return emoji;
+    }
+    
+    // Delete the given emoji. For emojis created by the current user, requires either the CREATE_GUILD_EXPRESSIONS or
+    // MANAGE_GUILD_EXPRESSIONS permission. For other emojis, requires the MANAGE_GUILD_EXPRESSIONS permission. Returns
+    // 204 No Content on success. Fires a Guild Emojis Update Gateway event.
+    // https://discord.com/developers/docs/resources/emoji#delete-guild-emoji
+    internal async Task DeleteGuildEmojiAsync(ulong guildId, ulong emojiId, string? reason)
+    { 
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/emojis/{emojiId}"), auditReason: reason);
+    }
+    
+    // Returns an object containing a list of emoji objects for the given application under the items key. Includes a
+    // user object for the team member that uploaded the emoji from the app's settings, or for the bot user if uploaded
+    // using the API.
+    // https://discord.com/developers/docs/resources/emoji#list-application-emojis
+    internal async Task<List<Emoji>> ListApplicationEmojisAsync(ulong applicationId)
+    {
+        string data = await RequestAsync(Get, Route($"/applications/{applicationId}/emojis"));
+        var element = JsonDocument.Parse(data).RootElement.GetProperty("items");
+        var emojis = DiscordGatewayClient.DeserializeWithNewtonsoft<List<Emoji>>(element);
+        emojis.ForEach(e => { SetEmojiValues(e, null); });
+        return emojis;
+    }
+    
+    // Returns an emoji object for the given application and emoji IDs. Includes the user field.
+    // https://discord.com/developers/docs/resources/emoji#get-application-emoji
+    internal async Task<Emoji> GetApplicationEmojiAsync(ulong applicationId, ulong emojiId)
+    {
+        string data = await RequestAsync(Get, Route($"/applications/{applicationId}/emojis/{emojiId}"));
+        var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
+        SetEmojiValues(emoji, null);
+        return emoji;
+    }
+    
+    // Create a new emoji for the application. Returns the new emoji object on success.
+    //
+    // Emojis and animated emojis have a maximum file size of 256 KiB. Attempting to upload an emoji larger than this
+    // limit will fail and return 400 Bad Request and an error message, but not a JSON status code.
+    //
+    // We highly recommend that developers use the .webp extension when fetching emoji so they're rendered as WebP for
+    // maximum performance and compatibility. See the Emoji Formats section above for more details.
+    // https://discord.com/developers/docs/resources/emoji#create-application-emoji
+    internal async Task<Emoji> CreateApplicationEmojiAsync(ulong applicationId, string name, DFile file)
+    {
+        var payload = new JSON
+        {
+            { "name", name },
+            { "image", file._mimeTypeBase64 }
+        };
+        
+        string data = await RequestAsync(Post, Route($"/applications/{applicationId}/emojis"), payload);
+        var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
+        SetEmojiValues(emoji, null);
+        return emoji;
+    }
+    
+    // Modify the given emoji. Returns the updated emoji object on success.
+    // https://discord.com/developers/docs/resources/emoji#modify-application-emoji
+    internal async Task<Emoji> ModifyApplicationEmojiAsync(ulong applicationId, ulong emojiId, EmojiEdit edit)
+    {
+        // "roles" value is only valid for guild emoji payloads.
+        edit._payload.Remove("roles");
+        
+        string data = await RequestAsync(Patch, Route($"/applications/{applicationId}/emojis/{emojiId}"), edit._payload);
+        var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
+        SetEmojiValues(emoji, null);
+        return emoji;
+    }
+    
+    // Delete the given emoji. Returns 204 No Content on success.
+    // https://discord.com/developers/docs/resources/emoji#delete-application-emoji
+    internal async Task DeleteApplicationEmojiAsync(ulong applicationId, ulong emojiId)
+    { 
+        await RequestAsync(Delete, Route($"/applications/{applicationId}/emojis/{emojiId}"));
+    }
+    
+    #endregion
     
     #region GUILD SCHEDULED EVENT
 

@@ -15,8 +15,7 @@ public class Emoji : IEquatable<Emoji>
     /// <summary>
     /// Emoji ID.
     /// </summary>
-    [JsonProperty("id")]
-    public ulong Id { get; init; }
+    public ulong Id { get; }
     
     /// <summary>
     /// Emoji name.
@@ -54,19 +53,34 @@ public class Emoji : IEquatable<Emoji>
     [JsonProperty("available")]
     public bool IsAvailable { get; internal set; }
 
-    #region API Separated
+    #region CUSTOM
+    
+    /// <summary>
+    /// Your bot instance.
+    /// </summary>
+    public Bot? Bot { get; internal set; }
+    
+    /// <summary>
+    /// ID of the guild this emoji belongs to, or <c>null</c> if it's an Application emoji.
+    /// </summary>
+    public ulong? GuildId { get; internal set; }
+    
+    /// <summary>
+    /// Whether this emoji belongs directly to an application, and is not a part of any guild.
+    /// </summary>
+    public bool IsApplicationEmoji => GuildId is null;
 
     /// <summary>
     /// The URL of the emoji.
     /// </summary>
-    public string Url { get; init; }
-
+    public string Url { get; }
+    
     #endregion
-
-
+    
     [JsonConstructor]
     private Emoji(ulong id, bool animated)
     {
+        Id = id;
         IsAnimated = animated;
         Url = ApiRoute.Cdn.GetDescription() + $"/emojis/{id}{(animated ? ".gif" : ".png")}";
     }
@@ -74,6 +88,36 @@ public class Emoji : IEquatable<Emoji>
     public override bool Equals(object? other) => other is Emoji emoji && Equals(emoji);
     public bool Equals(Emoji? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
+
+    /// <summary>
+    /// Edits the emoji.
+    /// </summary>
+    /// <param name="edit">Emoji edit instance.</param>
+    /// <param name="reason">Reason for editing the emoji. This is displayed in the audit-log.</param>
+    /// <returns>The updated emoji.</returns>
+    public async Task<Emoji> EditAsync(EmojiEdit edit, string? reason = null)
+    {
+        if (!IsApplicationEmoji) 
+            return await Bot!._rest.ModifyGuildEmojiAsync(GuildId!.Value, Id, edit, reason);
+        
+        var app = await Bot!.ApplicationAsync();
+        return await Bot!._rest.ModifyApplicationEmojiAsync(app.Id, Id, edit);
+    }
+
+    /// <summary>
+    /// Deletes the emoji.
+    /// </summary>
+    /// <param name="reason">Reason for deleting the emoji. This is displayed in the audit-log.</param>
+    public async Task DeleteAsync(string? reason = null)
+    {
+        if (!IsApplicationEmoji) 
+            await Bot!._rest.DeleteGuildEmojiAsync(GuildId!.Value, Id, reason);
+        else
+        {
+            var app = await Bot!.ApplicationAsync();
+            await Bot!._rest.DeleteApplicationEmojiAsync(app.Id, Id);
+        }
+    }
 
     /// <summary>
     /// Returns the actual representation of the emoji.
@@ -95,6 +139,34 @@ public class Emoji : IEquatable<Emoji>
 }
 
 /// <summary>
+/// Represents the values that can be edited for an Emoji via <see cref="Emoji.EditAsync"/>.
+/// </summary>
+public struct EmojiEdit
+{
+    internal JSON _payload = [];
+    
+    public EmojiEdit() { }
+
+    /// <summary>
+    /// Name for the emoji.
+    /// </summary>
+    public EmojiEdit SetName(string name)
+    {
+        _payload["name"] = name;
+        return this;
+    }
+    
+    /// <summary>
+    /// Roles that are allowed to use the emoji or <c>null</c> for none. Not applicable for Application emojis.
+    /// </summary>
+    public EmojiEdit SetRoles(IReadOnlyCollection<Role>? roles)
+    {
+        _payload["roles"] = roles;
+        return this;
+    }
+}
+
+/// <summary>
 /// Represents a partial emoji on Discord.
 /// </summary>
 public class PartialEmoji : IEquatable<PartialEmoji>
@@ -106,7 +178,7 @@ public class PartialEmoji : IEquatable<PartialEmoji>
     public ulong? Id { get; init; }
 
     /// <summary>
-    /// Emoji name. If created via TODO or TODO, this property may be <c>null</c> when custom emoji data is
+    /// Emoji name. May be <c>null</c> when custom emoji data is
     /// not available (for example, if it was deleted from the guild).
     /// </summary>
     [JsonProperty("name")]
@@ -155,7 +227,7 @@ public class PartialEmoji : IEquatable<PartialEmoji>
     /// <summary>
     /// Converts an emoji into a partial emoji.
     /// </summary>
-    /// <param name="emoji">Either a unicode or guild emoji.</param>
+    /// <param name="emoji">Either a Unicode or guild emoji.</param>
     /// <returns>The partial emoji version of the given emoji.</returns>
     public static PartialEmoji FromString(string emoji)
     {
