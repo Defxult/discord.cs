@@ -5,7 +5,9 @@ using Discord.Net;
 
 namespace Discord.Utility;
 
-
+/// <summary>
+/// Contains various methods helpful methods.
+/// </summary>
 public static class Util
 {
     /// <summary>
@@ -54,6 +56,20 @@ public static class Util
             tasks.Remove(finished);
             yield return await finished;
         }
+    }
+
+    /// <summary>
+    /// A non-IAsyncEnumerable shortcut version for method <see cref="DownloadAsync(IReadOnlyCollection{Uri},TimeSpan?)"/>
+    /// </summary>
+    /// <param name="uri"></param>
+    /// <param name="timeout"></param>
+    /// <returns></returns>
+    /// <exception cref="InvalidOperationException">l</exception>
+    public static async Task<DFile> DownloadAsync(Uri uri, TimeSpan? timeout = null)
+    {
+        await foreach (var file in DownloadAsync([uri], timeout))
+            return file;
+        throw new InvalidOperationException("Could not download file");
     }
 
     internal static T ExtractFromJson<T>(string json, string key)
@@ -349,11 +365,10 @@ public enum TimestampStyle
 
 internal static class Dev
 {
-    internal static void Log(string message, ConsoleColor color = ConsoleColor.White, bool timestamp = true)
+    internal static void Log(string message, bool timestamp = true)
     {
         if (Environment.GetEnvironmentVariable("##set_logging##") is null) return;
         var m = timestamp ? $"[{DateTime.Now:MM-dd-yyyy HH:mm:ss.fff}] {message}" : message;
-        Console.WriteLine(m, color);
-        Console.ResetColor();
+        Console.WriteLine(m);
     }
 }
