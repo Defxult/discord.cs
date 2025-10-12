@@ -45,6 +45,14 @@ public class Bot
     }
     
     #region PUBLIC
+
+    /// <summary>
+    /// Requests the bot's application information.
+    /// </summary>
+    /// <returns>The application information.</returns>
+    public async Task<Application> ApplicationAsync() =>
+        await _rest.GetApplicationAsync();
+    
     
     /// <summary>
     /// Retrieves the guild from the cache, or <c>null</c> if not found.

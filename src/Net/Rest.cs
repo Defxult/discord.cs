@@ -1,14 +1,13 @@
-using System.Text;
 using System.Text.Json;
 
 namespace Discord.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.ComponentModel;
 using Newtonsoft.Json;
 using Discord;
-using Discord.Models;
-using Discord.Utility;
-
+using Models;
+using Utility;
 
 internal class Rest
 {
@@ -19,6 +18,14 @@ internal class Rest
     private static HttpMethod Delete => HttpMethod.Delete;
     private static HttpMethod Patch => HttpMethod.Patch;
     private static HttpMethod Put => HttpMethod.Put;
+    
+    private static readonly Dictionary<string, RateLimitBucket> _buckets = new();
+    private static readonly object _bucketLock = new();
+
+    // Global rate limit handling
+    private static readonly SemaphoreSlim _globalSemaphore = new(1, 1);
+    private static DateTimeOffset _globalResetAt = DateTimeOffset.MinValue;
+
 
     internal Rest(Bot bot)
     {
@@ -29,7 +36,7 @@ internal class Rest
         _http.DefaultRequestHeaders.Add("User-Agent", "discord.cs (https://github.com/Defxult/discord.cs)");
         _http.DefaultRequestHeaders.Add("Authorization", $"Bot {bot.Token}");
     }
-    
+
     // Converts the JSON object (data) to its string representation.
     private static StringContent ToStringContent(object data)
     {
@@ -37,11 +44,38 @@ internal class Rest
         return new StringContent(converted, Encoding.UTF8, "application/json");
     }
 
+    #region APPLICATION
+
+    // Returns the application object associated with the requesting bot user.
+    // https://discord.com/developers/docs/resources/application#get-current-application
+    internal async Task<Application> GetApplicationAsync()
+    {
+        string data = await RequestAsync(Get, Route("/applications/@me"));
+        var app = JsonConvert.DeserializeObject<Application>(data)!;
+        app.Bot = _bot;
+        return app;
+    }
+
+    // Edit properties of the app associated with the requesting bot user. Only properties that are passed will be updated.
+    // Returns the updated application object on success.
+    // https://discord.com/developers/docs/resources/application#edit-current-application
+    internal async Task<Application> EditCurrentApplicationAsync(ApplicationEdit edit)
+    {
+        string data = await RequestAsync(Patch, Route("/applications/@me"), edit._payload);
+        var app = JsonConvert.DeserializeObject<Application>(data)!;
+        app.Bot = _bot;
+        return app;
+    }
+
+    #endregion
+
     #region MESSAGE
 
     // DOCS: https://discord.com/developers/docs/resources/message#create-message
-    public async Task<Message> CreateMessageAsync(ulong channelId, object payload)
+    internal async Task<Message> CreateMessageAsync(ulong channelId, object payload)
     {
+        // TODO
+        // throw new NotImplementedException();
         string data = await RequestAsync(Post, Route($"/channels/{channelId}/messages"), payload);
         return JsonConvert.DeserializeObject<Message>(data)!;
     }
@@ -49,9 +83,9 @@ internal class Rest
     #endregion
     
     #region GUILD SCHEDULED EVENT
-        
+
     // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event
-    
+
     // Returns a list of guild scheduled event objects for the given guild.
     // https://discord.com/developers/docs/resources/guild-scheduled-event#list-scheduled-events-for-guild
     internal async Task<List<ScheduledEvent>> ListScheduledEventsForGuildAsync(ulong guildId)
@@ -65,7 +99,7 @@ internal class Rest
     #endregion
 
     #region STICKER
-    
+
     // Returns a sticker object for the given sticker ID.
     // https://discord.com/developers/docs/resources/sticker#get-sticker
     internal async Task<Sticker> GetStickerAsync(ulong id)
@@ -81,7 +115,7 @@ internal class Rest
         string data = await RequestAsync(Get, Route($"/sticker-packs"));
         return Util.ExtractFromJson<List<StickerPack>>(data, "sticker_packs");
     }
-    
+
     // Returns a sticker pack object for the given sticker pack ID.
     // https://discord.com/developers/docs/resources/sticker#get-sticker-pack
     internal async Task<StickerPack> GetStickerPackAsync(ulong id)
@@ -89,7 +123,7 @@ internal class Rest
         string data = await RequestAsync(Get, Route($"/sticker-packs/{id}"));
         return JsonConvert.DeserializeObject<StickerPack>(data)!;
     }
-    
+
     // Returns an array of sticker objects for the given guild. Includes user fields if the bot has the
     // CREATE_GUILD_EXPRESSIONS or MANAGE_GUILD_EXPRESSIONS permission.
     // https://discord.com/developers/docs/resources/sticker#list-guild-stickers
@@ -111,36 +145,39 @@ internal class Rest
         sticker.Bot = _bot;
         return sticker;
     }
-    
+
     // Create a new sticker for the guild. Send a multipart/form-data body. Requires the CREATE_GUILD_EXPRESSIONS permission.
     // Returns the new sticker object on success. Fires a Guild Stickers Update Gateway event.
     // https://discord.com/developers/docs/resources/sticker#create-guild-sticker
-    internal async Task<GuildSticker> CreateGuildStickerAsync(ulong guildId, string name, string description, string emoji, DFile file, string? reason)
+    internal async Task<GuildSticker> CreateGuildStickerAsync(ulong guildId, string name, string description,
+        string emoji, DFile file, string? reason)
     {
         var boundary = Guid.NewGuid().ToString().Replace("-", string.Empty);
-        
+
         using var form = new MultipartFormDataContent(boundary);
         form.Add(new StringContent(name), "name");
         form.Add(new StringContent(description), "description");
         form.Add(new StringContent(emoji), "tags");
-        
+
         var fileContent = new ByteArrayContent(file.Bytes);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(file._mimeType);
         form.Add(fileContent, "file", file.Name);
-        
+
         string data = await RequestAsync(Post, Route($"/guilds/{guildId}/stickers"), form, reason);
         var sticker = JsonConvert.DeserializeObject<GuildSticker>(data)!;
         sticker.Bot = _bot;
         return sticker;
     }
-    
+
     // Modify the given sticker. For stickers created by the current user, requires either the CREATE_GUILD_EXPRESSIONS
     // or MANAGE_GUILD_EXPRESSIONS permission. For other stickers, requires the MANAGE_GUILD_EXPRESSIONS permission.
     // Returns the updated sticker object on success. Fires a Guild Stickers Update Gateway event.
     // https://discord.com/developers/docs/resources/sticker#modify-guild-sticker
-    internal async Task<GuildSticker> ModifyGuildStickerAsync(ulong guildId, ulong stickerId, GuildStickerEdit edit, string? reason)
+    internal async Task<GuildSticker> ModifyGuildStickerAsync(ulong guildId, ulong stickerId, GuildStickerEdit edit,
+        string? reason)
     {
-        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/stickers/{stickerId}"), edit._payload, reason);
+        string data =
+            await RequestAsync(Patch, Route($"/guilds/{guildId}/stickers/{stickerId}"), edit._payload, reason);
         var sticker = JsonConvert.DeserializeObject<GuildSticker>(data)!;
         sticker.Bot = _bot;
         return sticker;
@@ -154,14 +191,14 @@ internal class Rest
         await RequestAsync(Delete, Route($"/guilds/{guildId}/stickers/{stickerId}"), reason);
 
     #endregion
-    
+
     // Combine the base API route with the HTTP request-specific route.
     private static string Route(string endpoint, ApiRoute route = ApiRoute.Base)
     {
         if (endpoint.StartsWith('/'))
             return route.GetDescription() + endpoint;
         throw new ArgumentException("Parameter must start with '/'", nameof(endpoint));
-    } 
+    }
 
     // https://discord.com/developers/docs/events/gateway#get-gateway
     internal async Task<string> GetGatewayAsync()
@@ -170,9 +207,10 @@ internal class Rest
         var obj = JsonConvert.DeserializeObject<JSON>(data);
         return obj["url"].ToString()!;
     }
-    
+
     // https://discord.com/developers/docs/events/gateway#get-gateway-bot
-    internal async Task<(string url, int shards, int sslTotal, int sslRemaining, int sslReset, int sslMax)> GetGatewayBotAsync()
+    internal async Task<(string url, int shards, int sslTotal, int sslRemaining, int sslReset, int sslMax)>
+        GetGatewayBotAsync()
     {
         string payload = await RequestAsync(Get, Route("/gateway/bot"));
         var data = JsonConvert.DeserializeObject<JSON>(payload);
