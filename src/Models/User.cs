@@ -73,7 +73,12 @@ public class User : IEquatable<User>
     [JsonIgnore]
     public readonly Media? AvatarDecoration;
 
-    #region API Separated
+    #region CUSTOM
+
+    /// <summary>
+    /// When the account was created.
+    /// </summary>
+    public DateTime CreatedAt => Util.SnowflakeToDateTime(Id);
 
     /// <summary>
     /// Mention the user.
