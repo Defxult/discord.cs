@@ -275,6 +275,7 @@ public sealed class DiscordGatewayClient
             {
                 intents = _intents,
                 token = _token,
+                large_threshold = 250,
                 properties = new
                 {
                     os = Environment.OSVersion.ToString(),
@@ -288,7 +289,7 @@ public sealed class DiscordGatewayClient
     }
     
     // Converts the Discord JSON payload into an object in this library.
-    private async Task SendJsonAsync(object payload)
+    internal async Task SendJsonAsync(object payload)
     {
         var json = JsonSerializer.Serialize(payload);
         var seg = Encoding.UTF8.GetBytes(json);
@@ -385,7 +386,10 @@ public sealed class DiscordGatewayClient
                     case "READY":
                         _sessionId = GetElementValue(payload.D!.Value, "session_id").ToString();
                         _resumeGatewayUrl = GetElementValue(payload.D!.Value, "resume_gateway_url").ToString();
-                        Dev.Log($"[GW] READY received, session ID: {_sessionId}");
+                        Dev.Log($"[GW] READY received, session ID: {_sessionId} - Resume URL: {_resumeGatewayUrl}");
+                        
+                        var userElement = GetElementValue(payload.D!.Value, "user");
+                        _bot.User = DeserializeWithNewtonsoft<User>(userElement);
                         break;
                     case "RESUMED":
                         Dev.Log("[GW] Successfully resumed");
@@ -393,19 +397,51 @@ public sealed class DiscordGatewayClient
                     case "MESSAGE_CREATE":
                         var messageCreated = DeserializeWithNewtonsoft<Message>(payload.D!.Value);
                         messageCreated.Bot = _bot;
-                        // TODO - INSERT
+                        
                         _bot.CacheMessage(messageCreated);
                         OnMessageCreate?.Invoke(this, messageCreated);
                         break;
-                    
                     case "GUILD_CREATE":
                         var guildCreated = DeserializeWithNewtonsoft<Guild>(payload.D!.Value);
                         guildCreated.Bot = _bot;
                         guildCreated._emojis.ForEach(e => { _bot._rest.SetEmojiValues(e, guildCreated.Id); });
-                        _bot._guilds.Add(guildCreated);
+                        guildCreated._roles.ForEach(r => { _bot._rest.SetRoleValues(r, guildCreated.Id); });
+                        
+                        // Add members to the guild members cache.
+                        var members = GetElementValue(payload.D!.Value, "members");
+                        if (_bot.CacheManager.Members)
+                        {
+                            var converted = DeserializeWithNewtonsoft<List<Member>>(members);
+                            _bot._rest.SetMemberValues(converted,  guildCreated.Id);
+                            guildCreated._members = converted.ToHashSet();
+                        }
+                        // Regardless of CacheManager.Members, the bot is still cached for all guilds.
+                        foreach (var element in members.EnumerateArray())
+                        {
+                            var idElement = element.GetProperty("user").GetProperty("id");
+                            if (Convert.ToUInt64(idElement.ToString()) != _bot.User?.Id)
+                                continue;
+                            
+                            var self = DeserializeWithNewtonsoft<Member>(element);
+                            _bot._rest.SetMemberValues([self], guildCreated.Id);
+                            guildCreated.Self = self;
+                            guildCreated._members.Add(self);
+                            break;
+                        }
+                        
+                        // Update the guild.
+                        if (!_bot._guilds.Add(guildCreated))
+                            _bot._guilds.First(g => g.Id == guildCreated.Id).Update(payload.D!.Value);
+                        break;
+                    case "GUILD_MEMBERS_CHUNK":
+                        var chunkedGuildId = Convert.ToUInt64(GetElementValue(payload.D!.Value, "guild_id").ToString());
+                        var chunkedMembers = GetElementValue(payload.D!.Value, "members");
+                        var convertedChunkedMembers = DeserializeWithNewtonsoft<List<Member>>(chunkedMembers);
+                        _bot._rest.SetMemberValues(convertedChunkedMembers, chunkedGuildId);
+                        if (_bot.GetGuild(chunkedGuildId) is { } chunkedGuild)
+                            chunkedGuild._members.UnionWith(convertedChunkedMembers);
                         break;
                 }
-
                 break;
 
             case 1: // Heartbeat request

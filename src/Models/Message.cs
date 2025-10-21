@@ -7,30 +7,7 @@ namespace Discord.Models;
 /// </summary>
 public class Message : IEquatable<Message>
 {
-    // Docs: https://discord.com/developers/docs/resources/message
-    
-    #region These fields are specific to the MESSAGE_CREATE/UPDATE events
-
-    /// <summary>
-    /// ID of the guild the message was sent in - unless it is an ephemeral message.
-    /// </summary>
-    [JsonProperty("guild_id")]
-    public ulong? GuildId { get; init; }
-    
-    /// <summary>
-    /// The <see cref="Author"/> of this message but returns their <see cref="Models.Member"/> object instead. Will be
-    /// <c>null</c> for ephemeral messages and messages from webhooks.
-    /// </summary>
-    [JsonProperty("member")]
-    public Member? Member { get; init; }
-
-    /// <summary>
-    /// Users specifically mentioned in the message.
-    /// </summary>
-    public IReadOnlyCollection<User> MentionedUsers => _mentions;
-    [JsonProperty("mentions")] private List<User> _mentions = [];
-
-    #endregion
+    // DOCS: https://discord.com/developers/docs/resources/message
     
     /// <summary>
     /// ID of the message.
@@ -86,6 +63,29 @@ public class Message : IEquatable<Message>
     /// </summary>
     //public IReadOnlyList<Role> MentionedRoles => _roleMentions; TODO
     [JsonProperty("mention_roles")] private List<ulong> _mentionedRoleIds = [];
+    
+    #region These fields are specific to the MESSAGE_CREATE/UPDATE events
+
+    /// <summary>
+    /// ID of the guild the message was sent in - unless it is an ephemeral message.
+    /// </summary>
+    [JsonProperty("guild_id")]
+    public ulong? GuildId { get; init; }
+    
+    /// <summary>
+    /// The <see cref="Author"/> of this message but returns their <see cref="Models.Member"/> object instead. Will be
+    /// <c>null</c> for ephemeral messages and messages from webhooks.
+    /// </summary>
+    [JsonProperty("member")]
+    public Member? Member { get; init; }
+
+    /// <summary>
+    /// Users specifically mentioned in the message.
+    /// </summary>
+    public IReadOnlyCollection<User> MentionedUsers => _mentions;
+    [JsonProperty("mentions")] private List<User> _mentions = [];
+
+    #endregion
 
     #region CUSTOM
     

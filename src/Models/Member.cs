@@ -1,4 +1,5 @@
 using Discord.Net;
+using Discord.Utility;
 using Newtonsoft.Json;
 
 namespace Discord.Models;
@@ -12,7 +13,7 @@ public class Member : IEquatable<Member>
     /// User object for the member. Contains information such as their ID, username, avatar, etc.
     /// </summary>
     [JsonProperty("user")]
-    public User? User { get; internal set; }
+    public User User { get; internal set; }
 
     /// <summary>
     /// The user's guild nickname.
@@ -20,37 +21,35 @@ public class Member : IEquatable<Member>
     [JsonProperty("nick")]
     public string? Nickname { get; internal set; }
 
-    // /// <summary>
-    // /// The user's avatar specific to this guild. For their global avatar, use <see cref="Models.User.Avatar"/>.
-    // /// </summary>
-    // public Media? Avatar
-    // {
-    //     get
-    //     {
-    //         if (_avatarHash is { } hash)
-    //             return new Media(hash, $"/guilds/{Guild.Id}/users/{Id}/avatars/{hash}");
-    //         return null;
-    //     }
-    // }
-    [JsonProperty("avatar")]
-    private string? _avatarHash;
+    /// <summary>
+    /// The user's avatar specific to this guild. For their global avatar, use <see cref="Models.User.Avatar"/>.
+    /// </summary>
+    public Media? Avatar
+    {
+        get
+        {
+            if (_avatarHash is { } hash)
+                return new Media(hash, $"/guilds/{GuildId}/users/{Id}/avatars/{hash}");
+            return null;
+        }
+    }
+    [JsonProperty("avatar")] private string? _avatarHash;
 
     /// <summary>
     /// All roles applied to the member.
     /// </summary>
-    // public IReadOnlyList<Role> Roles
-    // {
-    //     get
-    //     {
-    //         List<Role> roles = [];
-    //         foreach (var roleId in _roleIds)
-    //             if (Guild.GetRole(roleId) is { } r)
-    //                 roles.Add(r);
-    //         return roles;
-    //     }
-    // }
-    // [JsonProperty("roles")]
-    // private ulong[] _roleIds = [];
+    public IReadOnlyCollection<Role> Roles
+    {
+        get
+        {
+            List<Role> roles = [];
+            foreach (var roleId in _roleIds)
+                if (Bot.GetGuild(GuildId)?.GetRole(roleId) is { } r)
+                    roles.Add(r);
+            return roles;
+        }
+    }
+    [JsonProperty("roles")] private ulong[] _roleIds = [];
 
     /// <summary>
     /// When the member joined the guild.
@@ -63,6 +62,18 @@ public class Member : IEquatable<Member>
     /// </summary>
     [JsonProperty("premium_since")]
     public DateTime? PremiumSince { get; init; }
+    
+    /// <summary>
+    /// Whether the member is deafened in voice channels.
+    /// </summary>
+    [JsonProperty("deaf")]
+    public bool IsDeafened { get; internal set; }
+    
+    /// <summary>
+    /// Whether the member is muted in voice channels.
+    /// </summary>
+    [JsonProperty("mute")]
+    public bool IsMuted { get; internal set; }
 
     /// <summary>
     /// The member flags. Contains information such as <see cref="MemberFlags.DidRejoin"/> and more.
@@ -86,13 +97,47 @@ public class Member : IEquatable<Member>
     [JsonProperty("communication_disabled_until")]
     public DateTime? TimedOutUntil { get; internal set; }
 
+    /// <summary>
+    /// The member's guild avatar decoration.
+    /// </summary>
+    public Media? AvatarDecoration
+    {
+        get
+        {
+            if (_avatarDecorationData is not { } data) return null;
+            var hash = data["asset"].ToString()!; 
+            
+            // Avatar decorations are a little different. Usually the Media class would automatically assign the file
+            // type (.png or .gif) based on whether the hash starts with "a_". But with avatar decorations they will
+            // always be .png
+            var media = new Media(hash, $"/avatar-decoration-presets/{hash}");
+            media.Url = media.Url.Replace(".gif", ".png");
+            return media;
+        }
+    }
+    [JsonProperty("avatar_decoration_data")] Dictionary<string, object>? _avatarDecorationData;
+
     #region CUSTOM
     
     /// <summary>
-    /// The member's ID. This is a shortcut that is accessing the value from the <see cref="User"/> property. If said
-    /// property is <c>null</c> this will also be.
+    /// Your bot instance.
     /// </summary>
-    public ulong? Id => User?.Id;
+    public Bot Bot {  get; internal set; }
+    
+    /// <summary>
+    /// The member's ID. This is a shortcut that is accessing the value from the <see cref="User"/> property.
+    /// </summary>
+    public ulong Id => User.Id;
+    
+    /// <summary>
+    /// The member's name. This is a shortcut that is accessing the value from the <see cref="User"/> property.
+    /// </summary>
+    public string Name => User.Name;
+    
+    /// <summary>
+    /// ID of the guild this member belongs to.
+    /// </summary>
+    public ulong GuildId { get; internal set; }
 
     #endregion
 
@@ -108,7 +153,7 @@ public class Member : IEquatable<Member>
     public bool Equals(Member? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
 
-    #region Public
+    #region PUBLIC
 
     /// <summary>
     /// Create a direct message channel.
@@ -119,7 +164,7 @@ public class Member : IEquatable<Member>
 
     #endregion
 
-    #region Private
+    #region PRIVATE
     
     // Updates the member object with the new data from ON_MEMBER_UPDATE.
     internal void Update(JSON payload)

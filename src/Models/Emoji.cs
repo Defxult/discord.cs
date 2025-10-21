@@ -66,7 +66,7 @@ public class Emoji : IEquatable<Emoji>
     public ulong? GuildId { get; internal set; }
     
     /// <summary>
-    /// Whether this emoji belongs directly to an application, and is not a part of any guild.
+    /// Whether this emoji belongs directly to an Application, and is not a part of any guild.
     /// </summary>
     public bool IsApplicationEmoji => GuildId is null;
 
