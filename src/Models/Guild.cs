@@ -17,7 +17,8 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Guild ID.
     /// </summary>
-    public ulong Id { get; }
+    [JsonProperty("id")]
+    public ulong Id { get; init; }
 
     /// <summary>
     /// Guild name.
@@ -95,7 +96,7 @@ public class Guild : IEquatable<Guild>
     /// The channel ID that the widget will generate an invite to, or <c>null</c> if set to no invite.
     /// </summary>
     [JsonProperty("widget_channel_id")]
-    public ulong WidgetChannelId { get; internal set; }
+    public ulong? WidgetChannelId { get; internal set; }
     
     /// <summary>
     /// Verification level required for the guild.
@@ -124,7 +125,7 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Custom guild emojis.
     /// </summary>
-    public IReadOnlyCollection<Emoji> Emojis => _emojis;
+    public IReadOnlySet<Emoji> Emojis => _emojis.ToHashSet();
     [JsonProperty("emojis")] internal List<Emoji> _emojis;
     
     /// <summary>
@@ -199,7 +200,7 @@ public class Guild : IEquatable<Guild>
     /// Server boost level.
     /// </summary>
     public GuildPremiumTier PremiumTier => (GuildPremiumTier)_premiumTier;
-    [JsonProperty("premium_tier")]  internal int _premiumTier;
+    [JsonProperty("premium_tier")] internal int _premiumTier;
     
     /// <summary>
     /// Number of boosts the guild currently has.
@@ -269,23 +270,66 @@ public class Guild : IEquatable<Guild>
 
     #endregion
 
+    #region GUILD CREATE EXTRAS
+    
+    /// <summary>
+    /// When this guild was joined at. Will be <c>null</c> if accessed via <see cref="Bot.RequestGuild"/>.
+    /// </summary>
+    [JsonProperty("joined_at")]
+    public DateTime? JoinedAt { get; init; }
+
+    /// <summary>
+    /// <c>true</c> if this is considered a large guild. Discord.cs considers guilds with 250+ members to be large.
+    /// </summary>
+    /// <remarks>This depends on <see cref="MemberCount"/> to be accurate.</remarks>
+    public bool IsLarge => MemberCount >= 250;
+    
+    /// <summary>
+    /// <c>true</c> if this guild is unavailable due to an outage.
+    /// </summary>
+    [JsonProperty("unavailable")]
+    public bool IsUnavailable { get; internal set; }
+    
+    /// <summary>
+    /// Total number of members in this guild. Requires <see cref="Intents.GuildMembers"/> to be accurate.
+    /// </summary>
+    [JsonProperty("member_count")]
+    public int MemberCount { get; internal set; }
+    
+    /// <summary>
+    /// States of members currently in voice channels.
+    /// </summary>
+    public IReadOnlyCollection<VoiceState> VoiceStates => _voiceStates;
+    [JsonProperty("voice_states")] internal List<VoiceState> _voiceStates;
+
+    /// <summary>
+    /// Users in the guild. This will no
+    /// </summary>
+    public IReadOnlySet<Member> Members => _members;
+    [JsonProperty("members")] internal HashSet<Member> _members = [];
+
+    #endregion
+    
     #region CUSTOM
     
     /// <summary>
     /// Your bot instance.
     /// </summary>
-    public Bot? Bot {  get; internal set; }
+    public Bot Bot { get; internal set; }
+    
+    /// <summary>
+    /// Your bots member object for this guild.
+    /// </summary>
+    public Member Self { get; internal set; }
+    
+    /// <summary>
+    /// When the guild was last chunked, or <c>null</c> if never. This refers to when the chunk was initiated, not when
+    /// it was completed.
+    /// </summary>
+    public DateTime? LastChunked { get; private set; }
+    
     
     #endregion
-    
-    [JsonConstructor]
-    internal Guild(ulong id, List<Role> roles, bool _fromGateway = false)
-    {
-        Id = id;
-        foreach (var role in roles)
-            role.GuildId = id;
-        _roles = roles;
-    }
     
     public override bool Equals(object? other) => other is Guild guild && Equals(guild);
     public bool Equals(Guild? other) => Id == other?.Id;
@@ -299,7 +343,7 @@ public class Guild : IEquatable<Guild>
     /// <returns>All emojis in the guild.</returns>
     /// <remarks>It's generally preferred to use <see cref="Emojis"/> unless this is needed.</remarks>
     public async Task<IReadOnlyCollection<Emoji>> RequestEmojisAsync() =>
-        await Bot!._rest.ListGuildEmojisAsync(Id);
+        await Bot._rest.ListGuildEmojisAsync(Id);
 
     /// <summary>
     /// Requests an emoji in the guild.
@@ -307,7 +351,7 @@ public class Guild : IEquatable<Guild>
     /// <returns>The requested emoji.</returns>
     /// <remarks>Unlike <see cref="GetEmoji"/> this is an API call.</remarks>
     public async Task<Emoji> RequestEmojiAsync(ulong id) =>
-        await Bot!._rest.GetGuildEmojiAsync(Id, id);
+        await Bot._rest.GetGuildEmojiAsync(Id, id);
     
     /// <summary>
     /// Creates a new emoji for the guild.
@@ -318,7 +362,7 @@ public class Guild : IEquatable<Guild>
     /// <param name="reason">Reason for creating the emoji. This is displayed in the audit-log.</param>
     /// <returns>The newly created emoji.</returns>
     public async Task<Emoji> CreateEmojiAsync(string name, DFile image, IReadOnlyCollection<Role>? roles = null, string? reason = null) =>
-        await Bot!._rest.CreateGuildEmojiAsync(Id, name, image, roles ?? [], reason);
+        await Bot._rest.CreateGuildEmojiAsync(Id, name, image, roles ?? [], reason);
 
     /// <summary>
     /// Access an emoji from the cache.
@@ -354,15 +398,15 @@ public class Guild : IEquatable<Guild>
         DFile? image = null,
         RecurrenceRule? recurrence = null,
         string? reason = null
-    ) => await Bot!._rest.CreateGuildScheduledEventAsync(
+    ) => await Bot._rest.CreateGuildScheduledEventAsync(
         Id, name, startTime, endTime, channelId, location, description, entityType, image, recurrence, reason);
 
     /// <summary>
-    /// Requests scheduled events for the guild.
+    /// Requests all scheduled events for the guild.
     /// </summary>
     /// <returns>All scheduled events for the guild.</returns>
     public async Task<IReadOnlyCollection<ScheduledEvent>> RequestScheduledEventsAsync() =>
-        await Bot!._rest.ListScheduledEventsForGuildAsync(Id);
+        await Bot._rest.ListScheduledEventsForGuildAsync(Id);
 
     /// <summary>
     /// Requests a scheduled event.
@@ -370,7 +414,7 @@ public class Guild : IEquatable<Guild>
     /// <param name="id">ID of the scheduled event.</param>
     /// <returns>The requested scheduled event.</returns>
     public async Task<ScheduledEvent> RequestScheduledEventAsync(ulong id) =>
-        await Bot!._rest.GetGuildScheduledEventAsync(Id, id);
+        await Bot._rest.GetGuildScheduledEventAsync(Id, id);
 
     /// <summary>
     /// Creates a guild sticker.
@@ -381,29 +425,29 @@ public class Guild : IEquatable<Guild>
     /// <param name="file">File data for the sticker.</param>
     /// <param name="reason">Reason for creating the sticker. This is displayed in the audit-log.</param>
     public async Task CreateStickerAsync(string name, string description, string emoji, DFile file, string? reason = null) =>
-        await Bot!._rest.CreateGuildStickerAsync(Id, name, description, emoji, file, reason);
+        await Bot._rest.CreateGuildStickerAsync(Id, name, description, emoji, file, reason);
     
     /// <summary>
-    /// Requests guild stickers.
+    /// Requests all guild stickers.
     /// </summary>
     /// <returns>All stickers in the guild.</returns>
+    /// <remarks>It's generally preferred to use <see cref="Stickers"/> unless this is needed.</remarks>
     public async Task<IReadOnlyCollection<GuildSticker>> RequestStickersAsync() =>
-        await Bot!._rest.ListGuildStickersAsync(Id);
+        await Bot._rest.ListGuildStickersAsync(Id);
     
     /// <summary>
-    /// Requests a specific guild sticker. Unlike <see cref="GetSticker"/>, this is an API call.
+    /// Requests a guild sticker. Unlike <see cref="GetSticker"/>, this is an API call.
     /// </summary>
     /// <param name="id">Sticker ID.</param>
     /// <returns>The requested sticker</returns>
     public async Task<GuildSticker> RequestStickerAsync(ulong id) =>
-        await Bot!._rest.GetGuildStickerAsync(Id, id);
+        await Bot._rest.GetGuildStickerAsync(Id, id);
     
     /// <summary>
     /// Retrieves a sticker from the cache.
     /// </summary>
     /// <param name="id">ID of the sticker.</param>
-    /// <returns>The sticker with the provided ID or <c>null</c> if not found.</returns>
-    /// <remarks>This method is generally preferred compared to <see cref="RequestStickerAsync"/>.</remarks>
+    /// <returns>The sticker with the provided ID, or <c>null</c> if not found.</returns>
     public GuildSticker? GetSticker(ulong id) =>
         Stickers.FirstOrDefault(s => s.Id == id);
 
@@ -469,15 +513,97 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Edit role positions.
     /// </summary>
-    /// <param name="id"></param>
-    /// <returns></returns>
-    public Role? GetRole(ulong id) => Roles.FirstOrDefault(r => r.Id == id);
     /// <param name="positions">A dictionary which indicates each role and its new position.</param>
     /// <param name="reason">Reason for editing the role positions. This is displayed in the audit-log.</param>
     /// <returns>All roles in the guild.</returns>
     public async Task<List<Role>> EditRolePositionsAsync(Dictionary<Role, int> positions, string? reason = null) =>
         await Bot._rest.ModifyGuildRolePositionsAsync(Id, positions, reason);
     
+    /// <summary>
+    /// Requests a member. Unlike <see cref="GetMember"/>, this is an API call.
+    /// </summary>
+    /// <param name="id">Member ID.</param>
+    /// <returns>The requested member.</returns>
+    public async Task<Member> RequestMemberAsync(ulong id) =>
+        await Bot._rest.GetGuildMemberAsync(Id, id);
+
+    /// <summary>
+    /// Request members in the guild.
+    /// </summary>
+    /// <param name="amount">The amount of members to request (1000 max yielded per loop). Can be <c>null</c> to request
+    /// <b>all</b> members in the guild, and depending on the guild size that can take a while.</param>
+    /// <param name="after">Request members after the given date.</param>
+    /// <param name="cache">Whether to cache each member.</param>
+    /// <returns>The requested amount of members.</returns>
+    public async IAsyncEnumerable<List<Member>> RequestMembersAsync(int? amount = 1000, DateTime? after = null,
+        bool cache = true)
+    {
+        const int indefinite = -1;
+        var remaining = amount ?? indefinite;
+
+        var afterSnowflakeTime = after is not null ? Util.DateTimeToSnowflake(after.Value) : 0;
+        var hasMore = true;
+        var yielded = new List<Member>();
+
+        do
+        {
+            yielded.Clear();
+            var requestAmount = remaining == indefinite ? 1000 : Math.Min(remaining, 1000);
+            var members = await Bot._rest.ListGuildMembersAsync(Id, requestAmount, afterSnowflakeTime);
+            if (members.Count < 1000)
+                hasMore = false;
+
+            foreach (var member in members)
+            {
+                yielded.Add(member);
+                if (remaining == indefinite) continue;
+
+                remaining -= 1;
+                if (remaining == 0)
+                    hasMore = false;
+            }
+
+            afterSnowflakeTime = members.Last().Id;
+            if (cache) 
+                _members.UnionWith(members);
+            yield return yielded;
+        } while (hasMore);
+    }
+
+    /// <summary>
+    /// Requests all members in the guild. Requires <see cref="Intents.GuildMembers"/>. All members are cached regardless
+    /// of cache manager settings.
+    /// </summary>
+    /// <exception cref="DiscordException">Missing <see cref="Intents.GuildMembers"/>.</exception>
+    /// <remarks>This task is completed via the Websocket. If you'd like to access each member individually (batched) and
+    /// control whether members are cached, consider using <see cref="RequestMembersAsync"/> instead; although that process
+    /// could be slower.
+    /// </remarks>
+    public async Task ChunkAsync()
+    {
+        if (!Bot.Intents.HasFlag(Intents.GuildMembers))
+            throw new DiscordException($"Missing {Intents.GuildMembers} intent");
+        var payload = new
+        {
+            op = Opcode.RequestGuildMembers,
+            d = new
+            {
+                guild_id = Id,
+                query = string.Empty,
+                limit = 0
+            }
+        };
+        await Bot._client.SendJsonAsync(payload);
+        LastChunked = DateTime.UtcNow;
+    }
+    
+    /// <summary>
+    /// Retrieves a member from the cache.
+    /// </summary>
+    /// <param name="id">Member ID.</param>
+    /// <returns>The member matching the given ID, or <c>null</c> if not found.</returns>
+    public Member? GetMember(ulong id) =>
+        Members.FirstOrDefault(m => m.Id == id);
     
     #endregion
 
@@ -514,7 +640,81 @@ public class Guild : IEquatable<Guild>
 }
 
 /// <summary>
-/// Represents the values that can be edited for a guild via <see cref="Guild.EditAsync(GuildEdit, string?)"/> 
+/// Represents a user's voice state.
+/// </summary>
+public record VoiceState
+{
+    /// <summary>
+    /// The channel ID this user is connected to.
+    /// </summary>
+    [JsonProperty("channel_id")]
+    public ulong ChannelId { get; init; }
+    
+    /// <summary>
+    /// The user ID this voice state is for.
+    /// </summary>
+    [JsonProperty("user_id")]
+    public ulong UserId { get; init; }
+    
+    /// <summary>
+    /// The session ID for this voice state.
+    /// </summary>
+    [JsonProperty("session_id")]
+    public string SessionId { get; init; } = string.Empty;
+    
+    /// <summary>
+    /// Whether this user is deafened by the server.
+    /// </summary>
+    [JsonProperty("deaf")]
+    public bool IsDeafened { get; init; }
+    
+    /// <summary>
+    /// Whether this user is muted by the server.
+    /// </summary>
+    [JsonProperty("mute")]
+    public bool IsMuted { get; init; }
+    
+    /// <summary>
+    /// Whether this user is locally deafened.
+    /// </summary>
+    [JsonProperty("self_deaf")]
+    public bool IsSelfDeafened { get; init; }
+    
+    /// <summary>
+    /// Whether this user is locally muted.
+    /// </summary>
+    [JsonProperty("self_mute")]
+    public bool IsSelfMuted { get; init; }
+    
+    /// <summary>
+    /// Whether this user is streaming using "Go Live".
+    /// </summary>
+    public bool IsStreaming => _isStreaming is not null;
+    [JsonProperty("self_stream")] internal bool? _isStreaming;
+    
+    /// <summary>
+    /// Whether this user's camera is enabled.
+    /// </summary>
+    [JsonProperty("self_video")]
+    public bool IsCameraEnabled { get; init; }
+    
+    /// <summary>
+    /// Whether this user's permission to speak is denied.
+    /// </summary>
+    [JsonProperty("suppress")]
+    public bool IsSuppressed { get; init; }
+    
+    /// <summary>
+    /// The time at which the user requested to speak.
+    /// </summary>
+    [JsonProperty("request_to_speak_timestamp")]
+    public DateTime? RequestToSpeakTimestamp { get; init; }
+    
+    private VoiceState() { }
+}
+
+/// <summary>
+/// Represents the values that can be edited for a <see cref="Guild"/>. 
 /// </summary>
 public struct GuildEdit
 {
@@ -1029,7 +1229,7 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
     /// <summary>
     /// Edit the scheduled event.
     /// </summary>
-    /// <param name="edit"></param>
+    /// <param name="edit">A scheduled event edit instance.</param>
     /// <param name="reason">The reason for editing the scheduled event. This is displayed in the audit-log.</param>
     /// <returns></returns>
     public async Task<ScheduledEvent> EditAsync(ScheduledEventEdit edit, string? reason = null) =>
@@ -1045,7 +1245,7 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
 }
 
 /// <summary>
-/// Represents the values that can be edited for a scheduled event via <see cref="ScheduledEvent.EditAsync(GuildEdit, string?)"/> 
+/// Represents the values that can be edited for a <see cref="ScheduledEvent"/>. 
 /// </summary>
 public struct ScheduledEventEdit
 {

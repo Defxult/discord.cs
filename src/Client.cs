@@ -53,12 +53,19 @@ public class Bot
     public async Task<Application> ApplicationAsync() =>
         await _rest.GetApplicationAsync();
     
+    /// <summary>
+    /// Requests a guild by its ID.
+    /// </summary>
+    /// <param name="id"></param>
+    /// <returns>The requested guild.</returns>
+    public async Task<Guild> RequestGuild(ulong id) =>
+        await _rest.GetGuildAsync(id);
     
     /// <summary>
-    /// Retrieves the guild from the cache, or <c>null</c> if not found.
+    /// Retrieves a guild from the cache.
     /// </summary>
     /// <param name="id">Guild ID.</param>
-    /// <returns></returns>
+    /// <returns>The guild matching the given ID, or <c>null</c> if not found.</returns>
     public Guild? GetGuild(ulong id) =>
         _guilds.FirstOrDefault(g => g.Id == id);
 
@@ -71,7 +78,7 @@ public class Bot
         await _rest.GetStickerAsync(id);
 
     /// <summary>
-    /// Requests the premium sticker packs.
+    /// Requests a premium sticker packs.
     /// </summary>
     /// <returns>A list of sticker packs.</returns>
     public async Task<IReadOnlyCollection<StickerPack>> RequestStickerPacksAsync() =>
@@ -84,6 +91,19 @@ public class Bot
     /// <returns>The requested sticker pack.</returns>
     public async Task<StickerPack> RequestStickerPackAsync(ulong id) =>
         await _rest.GetStickerPackAsync(id);
+
+    /// <summary>
+    /// Retrieves a message from the cache.
+    /// </summary>
+    /// <param name="id">Message ID.</param>
+    /// <returns>The message matching the given ID, or <c>null</c> if not found.</returns>
+    public Message? GetMessage(ulong id)
+    {
+        if (_cachedMessages.FirstOrDefault(m => m.Id == id) is not { } message) return null;
+        // If the message is found, update its expiration.
+        message._expiration = DateTime.UtcNow.Add(CacheManager.Messages.Item2);
+        return message;
+    }
     
     #endregion
     
@@ -130,6 +150,9 @@ public class Bot
     //     await _gateway.SendPayloadAsync(payload);
     // }
 
+    /// <summary>
+    /// Start the bot and connect to Discord.
+    /// </summary>
     public async Task RunAsync()
     {
         if (_client._ws.State != WebSocketState.Open)

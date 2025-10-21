@@ -428,6 +428,29 @@ internal class Rest
         }
     }
     
+    // Returns a guild member object for the specified user.
+    // https://discord.com/developers/docs/resources/guild#get-guild-member
+    internal async Task<Member> GetGuildMemberAsync(ulong guildId, ulong userId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/members/{userId}"));
+        var member = JsonConvert.DeserializeObject<Member>(data)!;
+        SetMemberValues([member], guildId);
+        return member;
+    }
+    
+    // Returns a list of guild member objects that are members of the guild. This endpoint is restricted according to
+    // whether the GUILD_MEMBERS Privileged Intent is enabled for your application.
+    // https://discord.com/developers/docs/resources/guild#list-guild-members
+    internal async Task<List<Member>> ListGuildMembersAsync(ulong guildId, int limit, ulong afterSnowflake)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/members?limit={limit}&after={afterSnowflake}"));
+        var members = JsonConvert.DeserializeObject<List<Member>>(data)!;
+        SetMemberValues(members, guildId);
+        return members;
+    }
+    
+    #endregion
+    
     #region STICKER
 
     // Returns a sticker object for the given sticker ID.
@@ -518,7 +541,7 @@ internal class Rest
     // Returns 204 No Content on success. Fires a Guild Stickers Update Gateway event.
     // https://discord.com/developers/docs/resources/sticker#delete-guild-sticker
     internal async Task DeleteGuildStickerAsync(ulong guildId, ulong stickerId, string? reason) =>
-        await RequestAsync(Delete, Route($"/guilds/{guildId}/stickers/{stickerId}"), reason);
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/stickers/{stickerId}"), auditReason: reason);
 
     #endregion
 
