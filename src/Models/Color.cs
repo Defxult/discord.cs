@@ -22,11 +22,6 @@ public struct Color : IEquatable<Color>
     public static readonly Color Gray = new(0xA6A6A6);
     public static readonly Color DarkTheme = new(0x2F3136);
     public static readonly Color Teal = new(0x008080);
-    
-    /// <summary>
-    /// Generates a random color.
-    /// </summary>
-    public static Color Random => new(new Random().Next(1, Max + 1));
 
     /// <summary>
     /// The maximum a color value can be (lowest is 0).
@@ -78,6 +73,20 @@ public struct Color : IEquatable<Color>
     public override int GetHashCode() => Value.GetHashCode();
     public static bool operator ==(Color left, Color right) => left.Equals(right);
     public static bool operator !=(Color left, Color right) => !left.Equals(right);
+    
+    /// <summary>
+    /// Generates a random color.
+    /// </summary>
+    /// <returns>A random color.</returns>
+    public static Color Random() =>
+        new(new Random().Next(1, Max + 1));
+    
+    /// <summary>
+    /// Convert the <see cref="RoleColor"/> to its <see cref="Color"/> equivalent.
+    /// </summary>
+    /// <returns>A color.</returns>
+    public static Color FromRoleColor(RoleColor color) => 
+        new(color.Primary);
 
     /// <summary>
     /// Convert the value to its individual RGB components.
