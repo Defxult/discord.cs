@@ -118,8 +118,8 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Roles in the guild.
     /// </summary>
-    public IReadOnlyCollection<Role> Roles => _roles;
-    internal List<Role> _roles;
+    public IReadOnlyList<Role> Roles => _roles;
+    [JsonProperty("roles")] internal List<Role> _roles;
     
     /// <summary>
     /// Custom guild emojis.
@@ -406,17 +406,78 @@ public class Guild : IEquatable<Guild>
     /// <remarks>This method is generally preferred compared to <see cref="RequestStickerAsync"/>.</remarks>
     public GuildSticker? GetSticker(ulong id) =>
         Stickers.FirstOrDefault(s => s.Id == id);
-    
-    
-    
-    
+
+    /// <summary>
+    /// Requests all roles in the guild.
+    /// </summary>
+    /// <returns>All roles in the guild.</returns>
+    /// <remarks>It's generally preferred to use <see cref="Roles"/> unless this is needed.</remarks>
+    public async Task<IReadOnlyCollection<Role>> RequestRolesAsync() =>
+        await Bot._rest.GetGuildRolesAsync(Id);
     
     /// <summary>
-    /// 
+    /// Requests a role. Unlike <see cref="GetRole"/>, this is an API call.
+    /// </summary>
+    /// <param name="id">Role ID.</param>
+    /// <returns>The requested role.</returns>
+    public async Task<Role> RequestRoleAsync(ulong id) =>
+        await Bot._rest.GetGuildRoleAsync(Id, id);
+    
+    /// <summary>
+    /// Retrieves a role from the cache.
+    /// </summary>
+    /// <param name="id">Role ID.</param>
+    /// <returns>The role matching the given ID, or <c>null</c> if not found.</returns>
+    public Role? GetRole(ulong id) =>
+        Roles.FirstOrDefault(r => r.Id == id);
+
+    /// <summary>
+    /// Create a role.
+    /// </summary>
+    /// <param name="name">Name of the role, max 100 characters.</param>
+    /// <param name="permissions">The role's permissions.</param>
+    /// <param name="color">The role's colors.</param>
+    /// <param name="hoist">Whether the role should be displayed separately in the sidebar.</param>
+    /// <param name="icon">The role's icon image (if the guild has the <see cref="GuildFeature.RoleIcons"/> feature)</param>
+    /// <param name="emoji">The role's Unicode emoji as a standard emoji (if the guild has the <see cref="GuildFeature.RoleIcons"/> feature).</param>
+    /// <param name="mentionable">Whether the role should be mentionable.</param>
+    /// <param name="reason">Reason for creating the role. This is displayed in the audit-log.</param>
+    /// <returns>The created role.</returns>
+    public async Task<Role> CreateRoleAsync(
+        string? name = null, 
+        Permissions? permissions = null, 
+        RoleColor? color = null,
+        bool hoist = false,
+        DFile? icon = null,
+        string? emoji = null,
+        bool mentionable = false,
+        string? reason = null)
+    {
+        var payload = new JSON
+        {
+            { "name", name ?? "new role"},
+            { "permissions", permissions?.Value.ToString() ?? Permissions.None.Value.ToString() },
+            { "colors", color ?? new RoleColor() },
+            { "hoist", hoist },
+            { "icon", icon?._mimeTypeBase64 },
+            { "emoji", emoji },
+            { "mentionable", mentionable },
+        };
+        return await Bot._rest.CreateGuildRoleAsync(Id, payload, reason);
+    }
+
+    /// <summary>
+    /// Edit role positions.
     /// </summary>
     /// <param name="id"></param>
     /// <returns></returns>
     public Role? GetRole(ulong id) => Roles.FirstOrDefault(r => r.Id == id);
+    /// <param name="positions">A dictionary which indicates each role and its new position.</param>
+    /// <param name="reason">Reason for editing the role positions. This is displayed in the audit-log.</param>
+    /// <returns>All roles in the guild.</returns>
+    public async Task<List<Role>> EditRolePositionsAsync(Dictionary<Role, int> positions, string? reason = null) =>
+        await Bot._rest.ModifyGuildRolePositionsAsync(Id, positions, reason);
+    
     
     #endregion
 

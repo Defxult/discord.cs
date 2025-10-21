@@ -69,13 +69,13 @@ public class Role : IEquatable<Role>
     /// Whether this role is managed by an integration.
     /// </summary>
     [JsonProperty("managed")]
-    public bool Managed { get; init; }
+    public bool IsManaged { get; init; }
 
     /// <summary>
     /// Whether the role is mentionable.
     /// </summary>
     [JsonProperty("mentionable")]
-    public bool Mentionable { get; internal set; }
+    public bool IsMentionable { get; internal set; }
 
     /// <summary>
     /// The tags this role has.
@@ -91,24 +91,29 @@ public class Role : IEquatable<Role>
     #region CUSTOM
     
     /// <summary>
+    /// Your bot instance.
+    /// </summary>
+    public Bot Bot { get; internal set; }
+    
+    /// <summary>
     /// ID of the guild this role belongs to.
     /// </summary>
-    public ulong GuildId { get; internal set; } // Set in Guild constructor
+    public ulong GuildId { get; internal set; }
 
     /// <summary>
     /// Whether this role is the "Nitro Booster" role.
     /// </summary>
-    public bool PremiumSubscriber { get; }
+    public bool IsPremiumSubscriber { get; }
 
     /// <summary>
     /// Whether this is the <c>@everyone</c> role.
     /// </summary>
-    public bool Default => Id == GuildId;
+    public bool IsDefault => Id == GuildId;
 
     /// <summary>
     /// Mention the role.
     /// </summary>
-    public string Mention => Default ? Markdown.MentionEveryone : Markdown.MentionRole(Id);
+    public string Mention => IsDefault ? Markdown.MentionEveryone : Markdown.MentionRole(Id);
 
     #endregion
 
@@ -127,12 +132,46 @@ public class Role : IEquatable<Role>
          */
         if (tags is not null)
             Tags = RoleTag.Parse(tags);
-        PremiumSubscriber = Tags?.IsPremiumSubscriber ?? false;
+        IsPremiumSubscriber = Tags?.IsPremiumSubscriber ?? false;
     }
     
     public override bool Equals(object? other) => other is Role role && Equals(role);
     public bool Equals(Role? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
+    
+    /// <summary>
+    /// Edit the role.
+    /// </summary>
+    /// <param name="edit">A role edit instance.</param>
+    /// <param name="reason">The reason for editing the role. This is displayed in the audit-log.</param>
+    /// <returns>The updated role.</returns>
+    public async Task<Role> EditAsync(RoleEdit edit, string? reason = null) =>
+        await Bot._rest.ModifyGuildRoleAsync(GuildId, Id, edit, reason);
+
+    /// <summary>
+    /// Delete the role.
+    /// </summary>
+    /// <param name="reason">The reason for deleting the role. This is displayed in the audit-log.</param>
+    public async Task DeleteAsync(string? reason = null)
+    {
+        await Bot._rest.DeleteGuildRoleAsync(GuildId, Id, reason);
+    }
+
+    /// <summary>
+    /// Make a copy of this role.
+    /// </summary>
+    /// <returns>A new role with the same properties.</returns>
+    public async Task<Role> CloneAsync()
+    {
+        if (Bot.GetGuild(GuildId) is not { } guild) throw new DiscordException("Cannot clone role, guild not found");
+        return await guild.CreateRoleAsync(Name, Permissions, Color, Hoist, await File(), UnicodeEmoji, IsMentionable);
+
+        async Task<DFile?> File()
+        {
+            if (Icon is { } icon) return await icon.ToFile();
+            return null;
+        }
+    }
 }
 
 /// <summary>
@@ -149,29 +188,150 @@ public enum RoleFlag
 }
 
 /// <summary>
+/// Represents the values that can be edited for a <see cref="Role"/>.
+/// </summary>
+public struct RoleEdit
+{
+    internal JSON _payload = [];
+    
+    /// <summary>
+    /// Initializes a new role edit instance.
+    /// </summary>
+    public RoleEdit() { }
+
+    /// <summary>
+    /// Set the role name.
+    /// </summary>
+    /// <param name="name">Name of the role, max 100 characters.</param>
+    /// <returns>The edit instance.</returns>
+    public RoleEdit SetName(string name)
+    {
+        _payload["name"] = name;
+        return this;
+    }
+    
+    /// <summary>
+    /// Set the role permissions.
+    /// </summary>
+    /// <param name="permissions">Role permissions.</param>
+    /// <returns>The edit instance.</returns>
+    public RoleEdit SetPermissions(Permissions permissions)
+    {
+        _payload["permissions"] = permissions.Value.ToString();
+        return this;
+    }
+    
+    /// <summary>
+    /// Set the role color.
+    /// </summary>
+    /// <param name="color">The role's color.</param>
+    /// <returns>The edit instance.</returns>
+    public RoleEdit SetColor(RoleColor color)
+    {
+        _payload["colors"] = color;
+        return this;
+    }
+    
+    /// <summary>
+    /// Set the role hoist.
+    /// </summary>
+    /// <param name="hoist">Whether the role should be displayed separately in the sidebar.</param>
+    /// <returns>The edit instance.</returns>
+    public RoleEdit SetHoist(bool hoist)
+    {
+        _payload["hoist"] = hoist;
+        return this;
+    }
+    
+    /// <summary>
+    /// Set the role icon, or <c>null</c> to remove it.
+    /// </summary>
+    /// <param name="icon">The role's icon image (if the guild has <see cref="GuildFeature.RoleIcons"/>)</param>
+    /// <returns>The edit instance.</returns>
+    public RoleEdit SetIcon(DFile? icon)
+    {
+        _payload["icon"] = icon?._mimeTypeBase64;
+        return this;
+    }
+    
+    /// <summary>
+    /// Set the role's Unicode emoji, or <c>null</c> to remove it.
+    /// </summary>
+    /// <param name="emoji">The role's Unicode emoji as a standard emoji (if the guild has <see cref="GuildFeature.RoleIcons"/>)</param>
+    /// <returns>The edit instance.</returns>
+    public RoleEdit SetEmoji(string? emoji)
+    {
+        _payload["unicode_emoji"] = emoji;
+        return this;
+    }
+
+    /// <summary>
+    /// Set whether the role should be mentionable.
+    /// </summary>
+    /// <param name="mentionable"></param>
+    /// <returns>The edit instance.</returns>
+    public RoleEdit SetMentionable(bool mentionable)
+    {
+        _payload["mentionable"] = mentionable;
+        return this;
+    }
+
+    /// <summary>
+    /// Resets the role to its default state.
+    /// </summary>
+    /// <returns>The edit instance.</returns>
+    public static RoleEdit Reset()
+    {
+        return new RoleEdit()
+            .SetName("new role")
+            .SetPermissions(Permissions.None)
+            .SetColor(new RoleColor())
+            .SetHoist(false)
+            .SetIcon(null)
+            .SetEmoji(null)
+            .SetMentionable(false);
+    }
+}
+
+/// <summary>
 /// Represents a <see cref="Role"/> color.
 /// </summary>
 public record struct RoleColor
 {
     // DOCS: https://discord.com/developers/docs/topics/permissions#role-object-role-colors-object
-    
+
+    /// <summary>
+    /// Enables the role color to be holographic.
+    /// </summary>
+    /// <remarks>
+    /// <b>Warning:</b> Changing the <see cref="Primary"/> or <see cref="Secondary"/> values after instantiation with
+    /// this field will cause errors due to API enforcement of values. If the holographic style is not desired, use the
+    /// available constructors.
+    /// </remarks>
+    public static readonly RoleColor Holographic = new()
+    {
+        Primary = 11127295,
+        Secondary = 16759788,
+        Tertiary = 16761760
+    };
+
     /// <summary>
     /// Primary color value.
     /// </summary>
     [JsonProperty("primary_color")]
-    public int Primary;
+    public int Primary { get; set; }
     
     /// <summary>
     /// Secondary color value.
     /// </summary>
     [JsonProperty("secondary_color")]
-    public int? Secondary;
+    public int? Secondary { get; set; }
     
     /// <summary>
     /// Tertiary color value.
     /// </summary>
     [JsonProperty("tertiary_color")]
-    public int? Tertiary;
+    public int? Tertiary { get; private set; }
 
     /// <summary>
     /// Initializes a role color with its default values.
@@ -179,17 +339,37 @@ public record struct RoleColor
     public RoleColor() { }
 
     /// <summary>
-    /// Initializes a role color.
+    /// Initializes a role color with only its primary value.
+    /// </summary>
+    public RoleColor(int primary)
+    {
+        Primary = primary;
+    }
+    
+    /// <summary>
+    /// Initializes a role color with a secondary color as its gradient.
     /// </summary>
     /// <param name="primary">The primary color for the role.</param>
-    /// <param name="secondary">The secondary color for the role, this will make the role a gradient between the other provided colors.</param>
-    /// <param name="tertiary">The tertiary color for the role, this will turn the gradient into a holographic style.</param>
-    public RoleColor(int primary, int? secondary, int? tertiary)
+    /// <param name="secondary">The secondary color for the role, this will make the role a gradient between the otherprovided colors.</param>
+    public RoleColor(int primary, int secondary)
     {
         Primary = primary;
         Secondary = secondary;
-        Tertiary = tertiary;
     }
+
+    /// <summary>
+    /// Generates a random role color.
+    /// </summary>
+    /// <returns>A role color</returns>
+    public static RoleColor Random() => 
+        new(Color.Random().Value);
+
+    /// <summary>
+    /// Convert the color to its <see cref="RoleColor"/> equivalent.
+    /// </summary>
+    /// <returns>A role color.</returns>
+    public static RoleColor FromColor(Color color) =>
+        new(color.Value);
 }
 
 

@@ -324,6 +324,110 @@ internal class Rest
 
     #endregion
 
+    #region GUILD
+
+    private void SetGuildValues(Guild guild)
+    {
+        guild.Bot = _bot;
+    }
+
+    // Returns the guild object for the given id. If with_counts is set to true, this endpoint will also return
+    // approximate_member_count and approximate_presence_count for the guild.
+    // https://discord.com/developers/docs/resources/guild#get-guild
+    internal async Task<Guild> GetGuildAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}?with_counts=true"));
+        var guild = JsonConvert.DeserializeObject<Guild>(data)!;
+        SetGuildValues(guild);
+        return guild;
+    }
+
+    internal void SetRoleValues(Role role, ulong guildId)
+    {
+        role.Bot = _bot;
+        role.GuildId = guildId;
+    }
+
+    // Returns a list of role objects for the guild.
+    // https://discord.com/developers/docs/resources/guild#get-guild-roles
+    internal async Task<List<Role>> GetGuildRolesAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/roles"));
+        var roles = JsonConvert.DeserializeObject<List<Role>>(data)!;
+        roles.ForEach(r => SetRoleValues(r,  guildId));
+        return roles;
+    }
+    
+    // Returns a role object for the specified role.
+    // https://discord.com/developers/docs/resources/guild#get-guild-role
+    internal async Task<Role> GetGuildRoleAsync(ulong guildId, ulong roleId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/roles/{roleId}"));
+        var role = JsonConvert.DeserializeObject<Role>(data)!;
+        SetRoleValues(role, guildId);
+        return role;
+    }
+
+    // Create a new role for the guild. Requires the MANAGE_ROLES permission. Returns the new role object on success.
+    // Fires a Guild Role Create Gateway event. All JSON params are optional.
+    // https://discord.com/developers/docs/resources/guild#create-guild-role
+    internal async Task<Role> CreateGuildRoleAsync(ulong guildId, JSON payload, string? reason)
+    {
+        string data = await RequestAsync(Post, Route($"/guilds/{guildId}/roles"), payload, reason);
+        var role = JsonConvert.DeserializeObject<Role>(data)!;
+        SetRoleValues(role, guildId);
+        return role;
+    }
+    
+    // Modify the positions of a set of role objects for the guild. Requires the MANAGE_ROLES permission. Returns a list
+    // of all guild role objects on success. Fires multiple Guild Role Update Gateway events.
+    // https://discord.com/developers/docs/resources/guild#modify-guild-role-positions
+    internal async Task<List<Role>> ModifyGuildRolePositionsAsync(ulong guildId, Dictionary<Role, int> positions, string? reason)
+    {
+        var payload = new List<Dictionary<string, object>>();
+        foreach (var (k, v) in positions)
+        {
+            var dict = new Dictionary<string, object>
+            {
+                { "id", k.Id },
+                { "position", v }
+            };
+            payload.Add(dict);
+        }
+        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/roles"), payload, reason);
+        var roles = JsonConvert.DeserializeObject<List<Role>>(data)!;
+        roles.ForEach(r => SetRoleValues(r,  guildId));
+        return roles;
+    }
+    
+    // Modify a guild role. Requires the MANAGE_ROLES permission. Returns the updated role on success. Fires a Guild Role
+    // Update Gateway event.
+    // https://discord.com/developers/docs/resources/guild#modify-guild-role
+    internal async Task<Role> ModifyGuildRoleAsync(ulong guildId, ulong roleId, RoleEdit edit, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/roles/{roleId}"), edit._payload, reason);
+        var role = JsonConvert.DeserializeObject<Role>(data)!;
+        SetRoleValues(role, guildId);
+        return role;
+    }
+    
+    // Delete a guild role. Requires the MANAGE_ROLES permission. Returns a 204 empty response on success. Fires a Guild
+    // Role Delete Gateway event.
+    // https://discord.com/developers/docs/resources/guild#delete-guild-role
+    internal async Task DeleteGuildRoleAsync(ulong guildId, ulong roleId, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/roles/{roleId}"), auditReason: reason);
+    }
+    
+    internal void SetMemberValues(IEnumerable<Member> members, ulong guildId)
+    {
+        foreach (var member in members)
+        {
+            member.Bot = _bot;
+            member.GuildId = guildId;
+        }
+    }
+    
     #region STICKER
 
     // Returns a sticker object for the given sticker ID.
