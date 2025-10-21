@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using Discord.Models;
 using Discord.Net;
+using Newtonsoft.Json;
 
 namespace Discord.Utility;
 
@@ -16,15 +17,27 @@ public static class Util
     public const ulong DiscordEpoch = 1420070400000;
     
     /// <summary>
-    /// Convert the snowflake to the date/time it represents.
+    /// Convert the snowflake to the DateTime it represents.
     /// </summary>
     /// <param name="id">The snowflake ID to convert.</param>
     /// <returns>The snowflake converted into a DateTime.</returns>
-    public static DateTime SnowflakeDateTime(ulong id)
+    public static DateTime SnowflakeToDateTime(ulong id)
     {
-        var value = (id >> 22) + DiscordEpoch;
-        var dto = DateTimeOffset.FromUnixTimeMilliseconds((long)value);
-        return dto.DateTime;
+        var value = ((id >> 22) + DiscordEpoch) / 1000;
+        var dto = DateTimeOffset.FromUnixTimeSeconds((long)value);
+        return dto.UtcDateTime;
+    }
+
+    /// <summary>
+    /// Convert the DateTime to the snowflake it represents.
+    /// </summary>
+    /// <param name="dt">A datetime.</param>
+    /// <returns>The DateTime converted into a snowflake.</returns>
+    public static ulong DateTimeToSnowflake(DateTime dt)
+    {
+        DateTimeOffset dto = new(dt.ToUniversalTime());
+        var timestamp = (ulong)(dto.ToUnixTimeSeconds() * 1000) - DiscordEpoch;
+        return (ulong)((timestamp << 22) + Math.Pow(2.0, 22.0));
     }
     
     /// <summary>
@@ -370,5 +383,10 @@ internal static class Dev
         if (Environment.GetEnvironmentVariable("##set_logging##") is null) return;
         var m = timestamp ? $"[{DateTime.Now:MM-dd-yyyy HH:mm:ss.fff}] {message}" : message;
         Console.WriteLine(m);
+    }
+
+    internal static void PrettyPrint(object json)
+    {
+        Console.WriteLine(JsonConvert.SerializeObject(json, Formatting.Indented));
     }
 }
