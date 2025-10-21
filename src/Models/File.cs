@@ -185,7 +185,7 @@ public abstract class Downloadable
     /// Source URL of media.
     /// </summary>
     [JsonProperty("url")]
-    public string Url { get; init; } = string.Empty;
+    public string Url { get; internal set; } = string.Empty;
     
     /// <summary>
     /// Convert the downloadable into a <see cref="DFile"/>.

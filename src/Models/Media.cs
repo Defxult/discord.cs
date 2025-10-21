@@ -11,14 +11,14 @@ public class Media : Downloadable, IEquatable<Media>
     /// <summary>
     /// The hash value of the media.
     /// </summary>
-    public readonly string Hash;
+    public string Hash { get; }
 
     #region CUSTOM
 
     /// <summary>
     /// Whether the media is animated.
     /// </summary>
-    public readonly bool IsAnimated;
+    public bool IsAnimated { get; }
 
     #endregion
 
@@ -43,6 +43,13 @@ public class Media : Downloadable, IEquatable<Media>
     /// </summary>
     public override string ToString() =>
         Url;
+    
+    /// <summary>
+    /// Convert this media to its file representation.
+    /// </summary>
+    /// <returns>A file.</returns>
+    public async Task<DFile> ToFile() =>
+        await Util.DownloadAsync(new Uri(Url));
     
     private string GetImageType() =>
         IsAnimated ? ".gif" : ".png";
