@@ -69,10 +69,10 @@ public sealed class DiscordGatewayClient
     private bool _heartbeatResponse;
     private bool _identifyRequired;
 
-    internal DiscordGatewayClient(Bot bot, string token, Intents intents)
+    internal DiscordGatewayClient(Bot bot, Intents intents)
     {
         _bot = bot;
-        _token = token;
+        _token = bot.Token!;
         _intents = intents;
         _heartbeatInterval = 30_000;
         _heartbeatResponse = false;

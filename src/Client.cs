@@ -6,41 +6,64 @@ using Newtonsoft.Json;
 
 namespace Discord;
 
+/// <summary>
+/// Represents the client that connects to the Discord API.
+/// </summary>
 public class Bot
 {
     /// <summary>
-    /// The bot authentication token. 
+    /// The bot authentication token. This is retrieved from your environment variable.
     /// </summary>
-    public readonly string Token;
+    public string? Token => Environment.GetEnvironmentVariable("DISCORD_BOT_TOKEN");
     
-    public IReadOnlyCollection<Guild> Guilds => _guilds;
+    /// <summary>
+    /// The bot user object.
+    /// </summary>
+    public User? User { get; internal set; }
+    
+    /// <summary>
+    /// All guilds the bot is currently in.
+    /// </summary>
+    public IReadOnlySet<Guild> Guilds => _guilds;
     internal readonly HashSet<Guild> _guilds = [];
 
-    public IReadOnlyCollection<Message> Messages => _cachedMessages;
-    internal readonly List<Message> _cachedMessages = [];
+    /// <summary>
+    /// All messages in every guild that the bot has permissions to see.
+    /// </summary>
+    public IReadOnlySet<Message> Messages => _cachedMessages;
+    private readonly HashSet<Message> _cachedMessages = [];
+    private Timer _messageCacheTimer;
     
+    /// <summary>
+    /// Events that 
+    /// </summary>
     public DiscordGatewayClient Events => _client;
-    private readonly DiscordGatewayClient _client;
+    internal readonly DiscordGatewayClient _client;
+
+    /// <summary>
+    /// A simple way to store items that are related to the bot's usage. This library never processes the information in said storage,
+    /// and is entirely handled by you.
+    /// </summary>
+    public Dictionary<string, object> Storage = [];
     
     public int ShardId { get; }
     public Intents Intents { get; }
     public CacheManager CacheManager;
 
     internal readonly Rest _rest;
-    internal Timer _messageCacheTimer;
 
-    public Bot(string token, Intents intents, int shardId = 0, CacheManager? cacheManager = null)
+    public Bot(Intents intents, int shardId = 0, CacheManager? cacheManager = null)
     {
-        Token = token;
+        if (Token is null) throw new DiscordException("Bot token not set");
         Intents = intents;
         ShardId = shardId;
-        _client = new DiscordGatewayClient(this, token, intents);
+        _client = new DiscordGatewayClient(this, intents);
         _rest = new Rest(this);
         CacheManager = cacheManager ?? CacheManager.Default;
-        _messageCacheTimer = new Timer(state =>
+        _messageCacheTimer = new Timer(_ =>
         {
             if (_cachedMessages.Count > 0)
-                _cachedMessages.RemoveAll(m => m._expiration >= DateTime.UtcNow);
+                _cachedMessages.RemoveWhere(m => m._expiration >= DateTime.UtcNow);
         }, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
     }
     
@@ -231,37 +254,71 @@ public enum ActivityType
     // Custom
 }
 
+/// <summary>
+/// Represents the bot's cache manager that controls which items will be cached.
+/// </summary>
 public record struct CacheManager
 {
+    /// <summary>
+    /// Whether <see cref="Message"/>s are cached, and for how long.
+    /// </summary>
     public (uint, TimeSpan) Messages;
-    public bool Channels;
-    public bool Roles;
-    public bool Stickers;
-    public bool Emojis;
     
+    /// <summary>
+    /// Whether <see cref="Guild.Members"/> are cached. The bot member object is always cached no matter the value and
+    /// can be accessed via <see cref="Guild.Self"/>.
+    /// </summary>
+    public bool Members;
+    
+    /// <summary>
+    /// Initializes a cache manager with the following settings:
+    /// <list type="bullet">
+    ///     <item><c>Messages</c> = 0 (messages are never cached)</item>
+    ///     <item><c>Members</c> = <c>false</c></item>
+    /// </list>
+    /// </summary>
     public static readonly CacheManager None = new()
     {
-        Messages = (0, TimeSpan.FromMinutes(0))
-    };
-
-    public static readonly CacheManager Default = new()
-    {
-        Messages = (1000, TimeSpan.FromMinutes(0)),
-        Channels = true
+        Messages = (0, TimeSpan.FromMinutes(0)),
+        Members = false
     };
     
+    /// <summary>
+    /// Initializes a cache manager with the following settings:
+    /// <list type="bullet">
+    ///     <item><c>Messages</c> = 1000 max, 5 minutes in cache</item>
+    ///     <item><c>Members</c> = <c>false</c></item>
+    /// </list>
+    /// </summary>
     public static readonly CacheManager Limited = new()
     {
-        Messages = (2500, TimeSpan.FromMinutes(15)),
-        Channels = true
+        Messages = (1000, TimeSpan.FromMinutes(5)),
+        Members = false
     };
     
+    /// <summary>
+    /// Initializes a cache manager with the following settings:
+    /// <list type="bullet">
+    ///     <item><c>Messages</c> = 5000 max, 15 minutes in cache</item>
+    ///     <item><c>Members</c> = <c>false</c></item>
+    /// </list>
+    /// </summary>
+    public static readonly CacheManager Default = new()
+    {
+        Messages = (5000, TimeSpan.FromMinutes(15)),
+        Members = false
+    };
+    
+    /// <summary>
+    /// Initializes a cache manager with the following settings:
+    /// <list type="bullet">
+    ///     <item><c>Messages</c> = 10,000 max, 30 minutes in cache</item>
+    ///     <item><c>Members</c> = <c>true</c></item>
+    /// </list>
+    /// </summary>
     public static readonly CacheManager Many = new()
     {
-        Messages = (5000, TimeSpan.FromMinutes(30)),
-        Channels = true,
-        Roles = true,
-        Stickers = true,
-        Emojis = true
+        Messages = (10_000, TimeSpan.FromMinutes(30)),
+        Members = true
     };
 }
