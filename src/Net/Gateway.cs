@@ -402,36 +402,23 @@ public sealed class DiscordGatewayClient
                         OnMessageCreate?.Invoke(this, messageCreated);
                         break;
                     case "GUILD_CREATE":
-                        var guildCreated = DeserializeWithNewtonsoft<Guild>(payload.D!.Value);
-                        guildCreated.Bot = _bot;
-                        guildCreated._emojis.ForEach(e => { _bot._rest.SetEmojiValues(e, guildCreated.Id); });
-                        guildCreated._roles.ForEach(r => { _bot._rest.SetRoleValues(r, guildCreated.Id); });
-                        
-                        // Add members to the guild members cache.
-                        var members = GetElementValue(payload.D!.Value, "members");
-                        if (_bot.CacheManager.Members)
+                        var guildCreatedId = Convert.ToUInt64(GetElementValue(payload.D!.Value, "id").ToString());
+
+                        // If the guild is already in cache, this is most likely being dispatched again due to it
+                        // recovering from an outage. The amount of information inside a guild can be significant,
+                        // especially if it was previously chunked, so simply replacing the guild with this new one would
+                        // most likely get rid of a lot of information. To avoid this, see if the guild is already in cache
+                        // and if so, update it.
+                        if (_bot.GetGuild(guildCreatedId) is { } gc)
+                            gc.Update(payload.D.Value);
+                        else
                         {
-                            var converted = DeserializeWithNewtonsoft<List<Member>>(members);
-                            _bot._rest.SetMemberValues(converted,  guildCreated.Id);
-                            guildCreated._members = converted.ToHashSet();
+                            var guildCreated = DeserializeWithNewtonsoft<Guild>(payload.D!.Value);
+                            guildCreated.Bot = _bot;
+                            guildCreated._emojis.ForEach(e => { _bot._rest.SetEmojiValues(e, guildCreated.Id); });
+                            guildCreated._roles.ForEach(r => { _bot._rest.SetRoleValues(r, guildCreated.Id); });
+                            guildCreated.CacheMembersFromCreate(payload);
                         }
-                        // Regardless of CacheManager.Members, the bot is still cached for all guilds.
-                        foreach (var element in members.EnumerateArray())
-                        {
-                            var idElement = element.GetProperty("user").GetProperty("id");
-                            if (Convert.ToUInt64(idElement.ToString()) != _bot.User?.Id)
-                                continue;
-                            
-                            var self = DeserializeWithNewtonsoft<Member>(element);
-                            _bot._rest.SetMemberValues([self], guildCreated.Id);
-                            guildCreated.Self = self;
-                            guildCreated._members.Add(self);
-                            break;
-                        }
-                        
-                        // Update the guild.
-                        if (!_bot._guilds.Add(guildCreated))
-                            _bot._guilds.First(g => g.Id == guildCreated.Id).Update(payload.D!.Value);
                         break;
                     case "GUILD_MEMBERS_CHUNK":
                         var chunkedGuildId = Convert.ToUInt64(GetElementValue(payload.D!.Value, "guild_id").ToString());

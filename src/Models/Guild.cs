@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Data;
 using System.Text.Json;
 using Discord.Utility;
 using Discord.Net;
@@ -608,6 +607,31 @@ public class Guild : IEquatable<Guild>
     #endregion
 
     #region PRIVATE
+
+    internal void CacheMembersFromCreate(GatewayPayload payload)
+    {
+        var members = DiscordGatewayClient.GetElementValue(payload.D!.Value, "members");
+        
+        if (Bot.CacheManager.Members)
+        {
+            var converted = DiscordGatewayClient.DeserializeWithNewtonsoft<List<Member>>(members);
+            Bot._rest.SetMemberValues(converted, Id);
+            _members.UnionWith(converted);
+        }
+        // Regardless of CacheManager.Members, the bot is still cached for all guilds.
+        foreach (var element in members.EnumerateArray())
+        {
+            var userId = element.GetProperty("user").GetProperty("id");
+            if (Convert.ToUInt64(userId.ToString()) != Bot.User?.Id)
+                continue;
+                            
+            var self = DiscordGatewayClient.DeserializeWithNewtonsoft<Member>(element);
+            Bot._rest.SetMemberValues([self], Id);
+            Self = self;
+            _members.Add(self);
+            break;
+        }
+    }
     
     internal void Update(JsonElement element)
     {
