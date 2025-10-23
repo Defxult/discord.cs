@@ -593,7 +593,7 @@ public class Guild : IEquatable<Guild>
                 limit = 0
             }
         };
-        await Bot._client.SendJsonAsync(payload);
+        await Bot._gateway.SendJsonAsync(payload);
         LastChunked = DateTime.UtcNow;
     }
     

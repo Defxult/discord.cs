@@ -12,7 +12,7 @@ namespace Discord;
 public class Bot
 {
     /// <summary>
-    /// The bot authentication token. This is retrieved from your environment variable.
+    /// The bot authentication token. 
     /// </summary>
     public string? Token => Environment.GetEnvironmentVariable("DISCORD_BOT_TOKEN");
     
@@ -35,10 +35,10 @@ public class Bot
     private Timer _messageCacheTimer;
     
     /// <summary>
-    /// Events that 
+    /// Events that the bot can listen for.
     /// </summary>
-    public DiscordGatewayClient Events => _client;
-    internal readonly DiscordGatewayClient _client;
+    public DiscordGatewayClient Events => _gateway;
+    internal readonly DiscordGatewayClient _gateway;
 
     /// <summary>
     /// A simple way to store items that are related to the bot's usage. This library never processes the information in said storage,
@@ -57,7 +57,7 @@ public class Bot
         if (Token is null) throw new DiscordException("Bot token not set");
         Intents = intents;
         ShardId = shardId;
-        _client = new DiscordGatewayClient(this, intents);
+        _gateway = new DiscordGatewayClient(this, intents);
         _rest = new Rest(this);
         CacheManager = cacheManager ?? CacheManager.Default;
         _messageCacheTimer = new Timer(_ =>
@@ -81,7 +81,7 @@ public class Bot
     /// </summary>
     /// <param name="id"></param>
     /// <returns>The requested guild.</returns>
-    public async Task<Guild> RequestGuild(ulong id) =>
+    public async Task<Guild> RequestGuildAsync(ulong id) =>
         await _rest.GetGuildAsync(id);
     
     /// <summary>
@@ -178,8 +178,8 @@ public class Bot
     /// </summary>
     public async Task RunAsync()
     {
-        if (_client._ws.State != WebSocketState.Open)
-            await _client.ConnectAsync(false);
+        if (_gateway._ws.State != WebSocketState.Open)
+            await _gateway.ConnectAsync(false);
     }
 }
 
