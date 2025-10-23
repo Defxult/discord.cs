@@ -14,11 +14,20 @@
 
 ## Basic Usage
 ```csharp
-// The following simply brings your bot online.
+// The following simply brings your bot online and listens for messages.
+
 using Discord;
 using Discord.Models;
 
-var bot = new Bot("token", Intents.Default);
+// Set your bot token.
+Environment.SetEnvironmentVariable("DISCORD_BOT_TOKEN", "<token>");
+var bot = new Bot(Intents.Default);
+
+// Listen for messages.
+bot.Events.OnMessageCreate += async (_, message) =>
+{
+    Console.WriteLine($"{message.Author.Name} said {message.Content}");
+};
 
 await bot.RunAsync();    
 await Task.Delay(-1);
