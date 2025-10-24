@@ -84,10 +84,13 @@ internal class Rest
 
     #region EMOJI
 
-    internal void SetEmojiValues(Emoji e, ulong? guildId)
+    internal void SetEmojiValues(IEnumerable<Emoji> emojis, ulong? guildId)
     {
-        e.GuildId = guildId;
-        e.Bot = _bot;
+        foreach (var e in emojis)
+        {
+            e.GuildId = guildId;
+            e.Bot = _bot;
+        }
     }
 
     // Returns a list of emoji objects for the given guild. Includes user fields if the bot has the CREATE_GUILD_EXPRESSIONS
@@ -97,7 +100,7 @@ internal class Rest
     {
         string data = await RequestAsync(Get, Route($"/guilds/{guildId}/emojis"));
         var emojis = JsonConvert.DeserializeObject<List<Emoji>>(data)!;
-        emojis.ForEach(e => { SetEmojiValues(e, guildId); });
+        SetEmojiValues(emojis, guildId);
         return emojis;
     }
     
@@ -108,7 +111,7 @@ internal class Rest
     {
         string data = await RequestAsync(Get, Route($"/guilds/{guildId}/emojis/{emojiId}"));
         var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
-        SetEmojiValues(emoji, guildId);
+        SetEmojiValues([emoji], guildId);
         return emoji;
     }
     
@@ -128,7 +131,7 @@ internal class Rest
         };
         string data = await RequestAsync(Post, Route($"/guilds/{guildId}/emojis"), payload, reason);
         var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
-        SetEmojiValues(emoji, guildId);
+        SetEmojiValues([emoji], guildId);
         return emoji;
     }
     
@@ -140,7 +143,7 @@ internal class Rest
     {
         string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/emojis/{emojiId}"), edit._payload, reason);
         var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
-        SetEmojiValues(emoji, guildId);
+        SetEmojiValues([emoji], guildId);
         return emoji;
     }
     
@@ -162,7 +165,7 @@ internal class Rest
         string data = await RequestAsync(Get, Route($"/applications/{applicationId}/emojis"));
         var element = JsonDocument.Parse(data).RootElement.GetProperty("items");
         var emojis = DiscordGatewayClient.DeserializeWithNewtonsoft<List<Emoji>>(element);
-        emojis.ForEach(e => { SetEmojiValues(e, null); });
+        SetEmojiValues(emojis, null);
         return emojis;
     }
     
@@ -172,7 +175,7 @@ internal class Rest
     {
         string data = await RequestAsync(Get, Route($"/applications/{applicationId}/emojis/{emojiId}"));
         var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
-        SetEmojiValues(emoji, null);
+        SetEmojiValues([emoji], null);
         return emoji;
     }
     
@@ -194,7 +197,7 @@ internal class Rest
         
         string data = await RequestAsync(Post, Route($"/applications/{applicationId}/emojis"), payload);
         var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
-        SetEmojiValues(emoji, null);
+        SetEmojiValues([emoji], null);
         return emoji;
     }
     
@@ -207,7 +210,7 @@ internal class Rest
         
         string data = await RequestAsync(Patch, Route($"/applications/{applicationId}/emojis/{emojiId}"), edit._payload);
         var emoji = JsonConvert.DeserializeObject<Emoji>(data)!;
-        SetEmojiValues(emoji, null);
+        SetEmojiValues([emoji], null);
         return emoji;
     }
     
@@ -342,10 +345,13 @@ internal class Rest
         return guild;
     }
 
-    internal void SetRoleValues(Role role, ulong guildId)
+    internal void SetRoleValues(IEnumerable<Role> roles, ulong guildId)
     {
-        role.Bot = _bot;
-        role.GuildId = guildId;
+        foreach (var role in roles)
+        {
+            role.Bot = _bot;
+            role.GuildId = guildId;
+        }
     }
 
     // Returns a list of role objects for the guild.
@@ -354,7 +360,7 @@ internal class Rest
     {
         string data = await RequestAsync(Get, Route($"/guilds/{guildId}/roles"));
         var roles = JsonConvert.DeserializeObject<List<Role>>(data)!;
-        roles.ForEach(r => SetRoleValues(r,  guildId));
+        SetRoleValues(roles, guildId);
         return roles;
     }
     
@@ -364,7 +370,7 @@ internal class Rest
     {
         string data = await RequestAsync(Get, Route($"/guilds/{guildId}/roles/{roleId}"));
         var role = JsonConvert.DeserializeObject<Role>(data)!;
-        SetRoleValues(role, guildId);
+        SetRoleValues([role], guildId);
         return role;
     }
 
@@ -375,7 +381,7 @@ internal class Rest
     {
         string data = await RequestAsync(Post, Route($"/guilds/{guildId}/roles"), payload, reason);
         var role = JsonConvert.DeserializeObject<Role>(data)!;
-        SetRoleValues(role, guildId);
+        SetRoleValues([role], guildId);
         return role;
     }
     
@@ -396,7 +402,7 @@ internal class Rest
         }
         string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/roles"), payload, reason);
         var roles = JsonConvert.DeserializeObject<List<Role>>(data)!;
-        roles.ForEach(r => SetRoleValues(r,  guildId));
+        SetRoleValues(roles, guildId);
         return roles;
     }
     
@@ -407,7 +413,7 @@ internal class Rest
     {
         string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/roles/{roleId}"), edit._payload, reason);
         var role = JsonConvert.DeserializeObject<Role>(data)!;
-        SetRoleValues(role, guildId);
+        SetRoleValues([role], guildId);
         return role;
     }
     
@@ -447,6 +453,62 @@ internal class Rest
         var members = JsonConvert.DeserializeObject<List<Member>>(data)!;
         SetMemberValues(members, guildId);
         return members;
+    }
+    
+    // Returns a list of guild member objects whose username or nickname starts with a provided string.
+    // https://discord.com/developers/docs/resources/guild#search-guild-members
+    internal async Task<List<Member>> SearchGuildMembersAsync(ulong guildId, string query, int limit)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/members/search?query={query}&limit={limit}"));
+        var members = JsonConvert.DeserializeObject<List<Member>>(data)!;
+        SetMemberValues(members, guildId);
+        return members;
+    }
+    
+    // Modify attributes of a guild member. Returns a 200 OK with the guild member as the body. Fires a Guild Member
+    // Update Gateway event. If the channel_id is set to null, this will force the target user to be disconnected from voice.
+    // https://discord.com/developers/docs/resources/guild#modify-guild-member
+    internal async Task<Member> ModifyGuildMemberAsync(ulong guildId, ulong userId, MemberEdit edit, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/members/{userId}"), edit._payload, reason);
+        var member = JsonConvert.DeserializeObject<Member>(data)!;
+        SetMemberValues([member], guildId);
+        return member;
+    }
+    
+    // Modifies the current member in a guild. Returns a 200 with the updated member object on success. Fires a Guild
+    // Member Update Gateway event.
+    // https://discord.com/developers/docs/resources/guild#modify-current-member
+    internal async Task<Member> ModifyCurrentMemberAsync(ulong guildId, BotMemberEdit edit, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/members/@me"), edit._payload, reason);
+        var member = JsonConvert.DeserializeObject<Member>(data)!;
+        SetMemberValues([member], guildId);
+        return member;
+    }
+    
+    // Adds a role to a guild member. Requires the MANAGE_ROLES permission. Returns a 204 empty response on success.
+    // Fires a Guild Member Update Gateway event.
+    // https://discord.com/developers/docs/resources/guild#add-guild-member-role
+    internal async Task AddGuildMemberRoleAsync(ulong guildId, ulong userId, ulong roleID, string? reason)
+    {
+        await RequestAsync(Put, Route($"/guilds/{guildId}/members/{userId}/roles/{roleID}"), auditReason: reason);
+    }
+    
+    // Removes a role to a guild member. Requires the MANAGE_ROLES permission. Returns a 204 empty response on success.
+    // Fires a Guild Member Update Gateway event.
+    // https://discord.com/developers/docs/resources/guild#remove-guild-member-role
+    internal async Task RemoveGuildMemberRoleAsync(ulong guildId, ulong userId, ulong roleID, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/members/{userId}/roles/{roleID}"), auditReason: reason);
+    }
+    
+    // Remove a member from a guild. Requires KICK_MEMBERS permission. Returns a 204 empty response on success. Fires a
+    // Guild Member Remove Gateway event.
+    // https://discord.com/developers/docs/resources/guild#remove-guild-member
+    internal async Task RemoveGuildMemberAsync(ulong guildId, ulong userId, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/members/{userId}"), auditReason: reason);
     }
     
     #endregion

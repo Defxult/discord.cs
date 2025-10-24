@@ -92,7 +92,7 @@ public class Guild : IEquatable<Guild>
     public bool WidgetEnabled { get; internal set; }
     
     /// <summary>
-    /// The channel ID that the widget will generate an invite to, or <c>null</c> if set to no invite.
+    /// Channel ID the widget will generate an invitation to, or <c>null</c> if set to no invite.
     /// </summary>
     [JsonProperty("widget_channel_id")]
     public ulong? WidgetChannelId { get; internal set; }
@@ -119,19 +119,19 @@ public class Guild : IEquatable<Guild>
     /// Roles in the guild.
     /// </summary>
     public IReadOnlyList<Role> Roles => _roles;
-    [JsonProperty("roles")] internal List<Role> _roles;
+    [JsonProperty("roles")] internal List<Role> _roles = [];
     
     /// <summary>
     /// Custom guild emojis.
     /// </summary>
     public IReadOnlySet<Emoji> Emojis => _emojis.ToHashSet();
-    [JsonProperty("emojis")] internal List<Emoji> _emojis;
+    [JsonProperty("emojis")] internal List<Emoji> _emojis = [];
     
     /// <summary>
     /// Enabled guild features.
     /// </summary>
     public IReadOnlyCollection<GuildFeature> Features => ParseGuildFeatures(_features);
-    [JsonProperty("features")] internal List<string> _features;
+    [JsonProperty("features")] internal List<string> _features = [];
     
     /// <summary>
     /// Required MFA level for the guild.
@@ -211,7 +211,7 @@ public class Guild : IEquatable<Guild>
     /// The preferred locale of a Community guild.
     /// </summary>
     public Locale Locale => ParseLocale(_locale);
-    [JsonProperty("preferred_locale")]  internal string _locale;
+    [JsonProperty("preferred_locale")] internal string _locale = string.Empty;
     
     /// <summary>
     /// ID of the channel where admins and moderators of Community guilds receive notices from Discord.
@@ -272,7 +272,7 @@ public class Guild : IEquatable<Guild>
     #region GUILD CREATE EXTRAS
     
     /// <summary>
-    /// When this guild was joined at. Will be <c>null</c> if accessed via <see cref="Bot.RequestGuild"/>.
+    /// When this guild was joined at. Will be <c>null</c> if accessed via <see cref="Bot.RequestGuildAsync"/>.
     /// </summary>
     [JsonProperty("joined_at")]
     public DateTime? JoinedAt { get; init; }
@@ -288,7 +288,7 @@ public class Guild : IEquatable<Guild>
     /// </summary>
     [JsonProperty("unavailable")]
     public bool IsUnavailable { get; internal set; }
-    
+
     /// <summary>
     /// Total number of members in this guild. Requires <see cref="Intents.GuildMembers"/> to be accurate.
     /// </summary>
@@ -299,13 +299,13 @@ public class Guild : IEquatable<Guild>
     /// States of members currently in voice channels.
     /// </summary>
     public IReadOnlyCollection<VoiceState> VoiceStates => _voiceStates;
-    [JsonProperty("voice_states")] internal List<VoiceState> _voiceStates;
+    [JsonProperty("voice_states")] internal List<VoiceState> _voiceStates = [];
 
     /// <summary>
-    /// Users in the guild. This will no
+    /// Users in the guild.
     /// </summary>
-    public IReadOnlySet<Member> Members => _members;
-    [JsonProperty("members")] internal HashSet<Member> _members = [];
+    [JsonIgnore] public IReadOnlySet<Member> Members => _members;
+    internal readonly HashSet<Member> _members = [];
 
     #endregion
     
@@ -319,14 +319,13 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Your bots member object for this guild.
     /// </summary>
-    public Member Self { get; internal set; }
+    public Member Self { get; private set; }
     
     /// <summary>
     /// When the guild was last chunked, or <c>null</c> if never. This refers to when the chunk was initiated, not when
     /// it was completed.
     /// </summary>
     public DateTime? LastChunked { get; private set; }
-    
     
     #endregion
     
@@ -531,11 +530,14 @@ public class Guild : IEquatable<Guild>
     /// </summary>
     /// <param name="amount">The amount of members to request (1000 max yielded per loop). Can be <c>null</c> to request
     /// <b>all</b> members in the guild, and depending on the guild size that can take a while.</param>
-    /// <param name="after">Request members after the given date.</param>
+    /// <param name="after">Request members whose accounts were created after the given date.</param>
     /// <param name="cache">Whether to cache each member.</param>
     /// <returns>The requested amount of members.</returns>
-    public async IAsyncEnumerable<List<Member>> RequestMembersAsync(int? amount = 1000, DateTime? after = null,
-        bool cache = true)
+    /// <remarks>Requires <see cref="Intents.GuildMembers"/>. Privileged Gateway Intents (server members) are also
+    /// required and need to be enabled in your <a href="https://discord.com/developers/applications">Discord developer portal.</a>
+    /// If you don't need access to each member but want all members, consider using <see cref="ChunkAsync"/> instead.
+    /// </remarks>
+    public async IAsyncEnumerable<List<Member>> RequestMembersAsync(int? amount = 1000, DateTime? after = null, bool cache = true)
     {
         const int indefinite = -1;
         var remaining = amount ?? indefinite;
@@ -570,13 +572,22 @@ public class Guild : IEquatable<Guild>
     }
 
     /// <summary>
+    /// Searches all member usernames/nicknames and selects each member that start with the given string.
+    /// </summary>
+    /// <param name="startsWith">What to search for (case-insensitive).</param>
+    /// <param name="limit">Maximum amount of members to return (1-1000).</param>
+    /// <returns>Members whose username or nickname <i>start with</i> the given string.</returns>
+    public async Task<List<Member>> SearchMembersAsync(string startsWith, int limit = 500) =>
+        await Bot._rest.SearchGuildMembersAsync(Id, startsWith, limit);
+
+    /// <summary>
     /// Requests all members in the guild. Requires <see cref="Intents.GuildMembers"/>. All members are cached regardless
     /// of cache manager settings.
     /// </summary>
     /// <exception cref="DiscordException">Missing <see cref="Intents.GuildMembers"/>.</exception>
     /// <remarks>This task is completed via the Websocket. If you'd like to access each member individually (batched) and
     /// control whether members are cached, consider using <see cref="RequestMembersAsync"/> instead; although that process
-    /// could be slower.
+    /// is slower.
     /// </remarks>
     public async Task ChunkAsync()
     {
@@ -608,7 +619,7 @@ public class Guild : IEquatable<Guild>
 
     #region PRIVATE
 
-    internal void CacheMembersFromCreate(GatewayPayload payload)
+    internal void CacheMembersFromCreate(GatewayPayload payload, ulong botId)
     {
         var members = DiscordGatewayClient.GetElementValue(payload.D!.Value, "members");
         
@@ -617,19 +628,26 @@ public class Guild : IEquatable<Guild>
             var converted = DiscordGatewayClient.DeserializeWithNewtonsoft<List<Member>>(members);
             Bot._rest.SetMemberValues(converted, Id);
             _members.UnionWith(converted);
+            Self = _members.First(m => m.Id == botId);
         }
-        // Regardless of CacheManager.Members, the bot is still cached for all guilds.
-        foreach (var element in members.EnumerateArray())
+        else
         {
-            var userId = element.GetProperty("user").GetProperty("id");
-            if (Convert.ToUInt64(userId.ToString()) != Bot.User?.Id)
-                continue;
-                            
-            var self = DiscordGatewayClient.DeserializeWithNewtonsoft<Member>(element);
-            Bot._rest.SetMemberValues([self], Id);
-            Self = self;
-            _members.Add(self);
-            break;
+            // Regardless of CacheManager.Members, the bot is still cached for all guilds.
+
+            // Through testing, the bots ID is always the last one, so reverse it so it can potentially avoid the extra
+            // loops. If for whatever reason it ends up not being the last one, no big deal continue as normal.
+            var reversed = members.EnumerateArray().Reverse();
+            
+            foreach (var element in reversed)
+            {
+                var userId = element.GetProperty("user").GetProperty("id");
+                if (Convert.ToUInt64(userId.ToString()) != Bot.User?.Id)
+                    continue;
+                Self = DiscordGatewayClient.DeserializeWithNewtonsoft<Member>(element);
+                Bot._rest.SetMemberValues([Self], Id);
+                _members.Add(Self);
+                break;
+            }
         }
     }
     

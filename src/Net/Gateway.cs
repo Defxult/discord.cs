@@ -415,9 +415,10 @@ public sealed class DiscordGatewayClient
                         {
                             var guildCreated = DeserializeWithNewtonsoft<Guild>(payload.D!.Value);
                             guildCreated.Bot = _bot;
-                            guildCreated._emojis.ForEach(e => { _bot._rest.SetEmojiValues(e, guildCreated.Id); });
-                            guildCreated._roles.ForEach(r => { _bot._rest.SetRoleValues(r, guildCreated.Id); });
-                            guildCreated.CacheMembersFromCreate(payload);
+                            guildCreated.CacheMembersFromCreate(payload, _bot.User!.Id);
+                            _bot._rest.SetEmojiValues(guildCreated._emojis, guildCreatedId);
+                            _bot._rest.SetRoleValues(guildCreated._roles, guildCreatedId);
+                            _bot._guilds.Add(guildCreated);
                         }
                         break;
                     case "GUILD_MEMBERS_CHUNK":

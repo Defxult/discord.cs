@@ -113,7 +113,8 @@ public class InvalidIntentsException(string message) : GatewayException(message)
 
 /// <summary>
 /// Disallowed intent was sent. Intent may have been specified that you have
-/// not enabled or are not approved for. Verify your privileged intents are enabled in your developer portal (error code 4014).
+/// not enabled or are not approved for. Verify your privileged intents are enabled in your
+/// <a href="https://discord.com/developers/applications">Discord developer portal</a> (error code 4014).
 /// </summary>
 public class DisallowedIntentsException(string message) : GatewayException(message) { }
 

@@ -160,11 +160,12 @@ public class Role : IEquatable<Role>
     /// <summary>
     /// Make a copy of this role.
     /// </summary>
+    /// <param name="name">Name of the cloned role, or <c>null</c> to keep the same name.</param>
     /// <returns>A new role with the same properties.</returns>
-    public async Task<Role> CloneAsync()
+    public async Task<Role> CloneAsync(string? name = null)
     {
         if (Bot.GetGuild(GuildId) is not { } guild) throw new DiscordException("Cannot clone role, guild not found");
-        return await guild.CreateRoleAsync(Name, Permissions, Color, Hoist, await File(), UnicodeEmoji, IsMentionable);
+        return await guild.CreateRoleAsync(name ?? Name, Permissions, Color, Hoist, await File(), UnicodeEmoji, IsMentionable);
 
         async Task<DFile?> File()
         {

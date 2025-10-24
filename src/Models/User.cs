@@ -65,13 +65,13 @@ public class User : IEquatable<User>
     /// The public flags on a user's account.
     /// </summary>
     [JsonIgnore]
-    public readonly List<UserFlag> Flags;
+    public List<UserFlag> Flags { get; }
 
     /// <summary>
     /// The user's avatar decoration.
     /// </summary>
     [JsonIgnore]
-    public readonly Media? AvatarDecoration;
+    public Media? AvatarDecoration { get; }
 
     #region CUSTOM
 
@@ -152,7 +152,6 @@ public class ClientUser : User
         }
     }
 }
-
 
 /// <summary>
 /// Represents the public flags on a <see cref="User"/>'s account.

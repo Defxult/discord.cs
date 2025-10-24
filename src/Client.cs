@@ -46,9 +46,18 @@ public class Bot
     /// </summary>
     public Dictionary<string, object> Storage = [];
     
-    public int ShardId { get; }
+    /// <summary>
+    /// The bots gateway intents. Handles which events are dispatched by Discord.
+    /// </summary>
     public Intents Intents { get; }
-    public CacheManager CacheManager;
+    
+    /// <summary>
+    /// Controls what will be cached.
+    /// </summary>
+    public CacheManager CacheManager { get; set; }
+    
+    // TODO
+    public int ShardId { get; }
 
     internal readonly Rest _rest;
 
@@ -79,7 +88,7 @@ public class Bot
     /// <summary>
     /// Requests a guild by its ID.
     /// </summary>
-    /// <param name="id"></param>
+    /// <param name="id">Guild ID.</param>
     /// <returns>The requested guild.</returns>
     public async Task<Guild> RequestGuildAsync(ulong id) =>
         await _rest.GetGuildAsync(id);
@@ -321,4 +330,22 @@ public record struct CacheManager
         Messages = (10_000, TimeSpan.FromMinutes(30)),
         Members = true
     };
+    
+    /// <summary>
+    /// Initializes a cache manager with its values equivalent to <see cref="None"/>.
+    /// </summary>
+    public CacheManager() { }
+
+    /// <summary>
+    /// Initializes a cache manager with the given values.
+    /// </summary>
+    /// <param name="messages">Whether <see cref="Message"/>s are cached, and for how long.</param>
+    /// <param name="members">Whether <see cref="Guild.Members"/> are cached. The bot member object is always cached no
+    /// matter the value and can be accessed via <see cref="Guild.Self"/>.
+    /// </param>
+    public CacheManager((uint, TimeSpan) messages, bool members)
+    {
+        Messages = messages;
+        Members = members;
+    }
 }
