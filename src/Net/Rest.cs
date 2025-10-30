@@ -319,10 +319,17 @@ internal class Rest
     // Get a list of guild scheduled event users subscribed to a guild scheduled event. Returns a list of guild scheduled
     // event user objects on success. Guild member data, if it exists, is included if the with_member query parameter is set.
     // https://discord.com/developers/docs/resources/guild-scheduled-event#get-guild-scheduled-event-users
-    internal async Task GetGuildScheduledEventUsers(ulong guildId, ulong eventId)
+    internal async Task<List<User>> GetGuildScheduledEventUsers(int limit, ulong guildId, ulong eventId, ulong? before, ulong? after)
     {
-        // TODO
-        throw new NotImplementedException();
+        string route = Route($"/guilds/{guildId}/scheduled-events/{eventId}/users?limit={limit}");
+        if (before.HasValue) route += $"&before={before.Value}";
+        if (after.HasValue) route += $"&after={after.Value}";
+        string data = await RequestAsync(Get, route);
+        var doc = JsonDocument.Parse(data);
+        var users = new List<User>();
+        foreach (var ele in doc.RootElement.EnumerateArray())
+            users.Add(DiscordGatewayClient.DeserializeWithNewtonsoft<User>(ele.GetProperty("user")));
+        return users;
     }
 
     #endregion
@@ -332,6 +339,8 @@ internal class Rest
     private void SetGuildValues(Guild guild)
     {
         guild.Bot = _bot;
+        if (_bot.GetGuild(guild.Id) is { } g)
+            guild.Self = g.Self;
     }
 
     // Returns the guild object for the given id. If with_counts is set to true, this endpoint will also return
@@ -340,6 +349,25 @@ internal class Rest
     internal async Task<Guild> GetGuildAsync(ulong guildId)
     {
         string data = await RequestAsync(Get, Route($"/guilds/{guildId}?with_counts=true"));
+        var guild = JsonConvert.DeserializeObject<Guild>(data)!;
+        SetGuildValues(guild);
+        return guild;
+    }
+    
+    // Returns the guild preview object for the given id. If the user is not in the guild, then the guild must be discoverable.
+    // https://discord.com/developers/docs/resources/guild#get-guild-preview
+    internal async Task<GuildPreview> GetGuildPreviewAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/preview"));
+        return JsonConvert.DeserializeObject<GuildPreview>(data)!;
+    }
+    
+    // Modify a guild's settings. Requires the MANAGE_GUILD permission. Returns the updated guild object on success.
+    // Fires a Guild Update Gateway event.
+    // https://discord.com/developers/docs/resources/guild#modify-guild
+    internal async Task<Guild> ModifyGuildAsync(ulong guildId, GuildEdit edit, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}"), edit._payload, reason);
         var guild = JsonConvert.DeserializeObject<Guild>(data)!;
         SetGuildValues(guild);
         return guild;
@@ -511,6 +539,262 @@ internal class Rest
         await RequestAsync(Delete, Route($"/guilds/{guildId}/members/{userId}"), auditReason: reason);
     }
     
+    // Returns a list of ban objects for the users banned from this guild. Requires the BAN_MEMBERS permission.
+    // https://discord.com/developers/docs/resources/guild#get-guild-bans
+    internal async Task<List<BanRecord>> GetGuildBansAsync(ulong guildId, int limit, ulong? before, ulong? after)
+    {
+        string route = Route($"/guilds/{guildId}/bans?limit={limit}");
+        if (before.HasValue) route += $"&before={before.Value}";
+        if (after.HasValue) route += $"&after={after.Value}";
+        string data = await RequestAsync(Get, route);
+        return JsonConvert.DeserializeObject<List<BanRecord>>(data)!;
+    }
+    
+    // Returns a ban object for the given user or a 404 not found if the ban cannot be found. Requires the BAN_MEMBERS permission.
+    // https://discord.com/developers/docs/resources/guild#get-guild-ban
+    internal async Task<BanRecord> GetGuildBanAsync(ulong guildId, ulong userId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/bans/{userId}"));
+        return JsonConvert.DeserializeObject<BanRecord>(data)!;
+    }
+    
+    // Create a guild ban, and optionally delete previous messages sent by the banned user. Requires the BAN_MEMBERS
+    // permission. Returns a 204 empty response on success. Fires a Guild Ban Add Gateway event.
+    // https://discord.com/developers/docs/resources/guild#create-guild-ban
+    internal async Task CreateGuildBanAsync(ulong guildId, ulong userId, TimeSpan seconds, string? reason)
+    {
+        string route = Route($"/guilds/{guildId}/bans/{userId}?delete_message_seconds={seconds.TotalSeconds}");
+        await RequestAsync(Put, route, auditReason: reason);
+    }
+    
+    // Remove the ban for a user. Requires the BAN_MEMBERS permissions. Returns a 204 empty response on success. Fires a
+    // Guild Ban Remove Gateway event.
+    // https://discord.com/developers/docs/resources/guild#remove-guild-ban
+    internal async Task RemoveGuildBanAsync(ulong guildId, ulong userId, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/bans/{userId}"), auditReason: reason);
+    }
+    
+    // Ban up to 200 users from a guild, and optionally delete previous messages sent by the banned users. Requires both
+    // the BAN_MEMBERS and MANAGE_GUILD permissions. Returns a 200 response on success, including the fields banned_users
+    // with the IDs of the banned users and failed_users with IDs that could not be banned or were already banned.
+    // https://discord.com/developers/docs/resources/guild#bulk-guild-ban
+    internal async Task<(List<ulong> bannedUsers, List<ulong> failedUsers)> BulkGuildBanAsync(ulong guildId,
+        JSON payload, string? reason)
+    {
+        string data = await RequestAsync(Post, Route($"/guilds/{guildId}/bulk-ban"), payload, reason);
+        var doc = JsonDocument.Parse(data);
+        var bannedUsers = DiscordGatewayClient.DeserializeWithNewtonsoft<List<ulong>>(doc.RootElement.GetProperty("banned_users"));
+        var failedUsers = DiscordGatewayClient.DeserializeWithNewtonsoft<List<ulong>>(doc.RootElement.GetProperty("failed_users"));
+        return (bannedUsers, failedUsers);
+    }
+    
+    // Returns an object with one pruned key indicating the number of members that would be removed in a prune operation.
+    // Requires the MANAGE_GUILD and KICK_MEMBERS permissions.
+    // 
+    // By default, prune will not remove users with roles. You can optionally include specific roles in your prune by
+    // providing the include_roles parameter. Any inactive user that has a subset of the provided role(s) will be counted
+    // in the prune and users with additional roles will not.
+    // https://discord.com/developers/docs/resources/guild#get-guild-prune-count
+    internal async Task<int> GetGuildPruneCountAsync(ulong guildId, int days, IEnumerable<Role>? roles)
+    {
+        string route = Route($"/guilds/{guildId}/prune?days={days}");
+        if (roles is not null) route += $"&include_roles={string.Join(",", roles.Select(r => r.Id))}";
+        string data = await RequestAsync(Get, route);
+        var payload = JsonConvert.DeserializeObject<JSON>(data)!;
+        return Convert.ToInt32(payload.Values.First());
+    }
+    
+    // Begin a prune operation. Requires the MANAGE_GUILD and KICK_MEMBERS permissions. Returns an object with one pruned
+    // key indicating the number of members that were removed in the prune operation. For large guilds it's recommended
+    // to set the compute_prune_count option to false, forcing pruned to null. Fires multiple Guild Member Remove
+    // Gateway events.
+    // 
+    // By default, prune will not remove users with roles. You can optionally include specific roles in your prune by
+    // providing the include_roles parameter. Any inactive user that has a subset of the provided role(s) will be
+    // included in the prune and users with additional roles will not.
+    // https://discord.com/developers/docs/resources/guild#begin-guild-prune
+    internal async Task<int?> BeginGuildPruneAsync(ulong guildId, int days, bool computePruneCount, IEnumerable<Role>? roles,
+        string? reason)
+    {
+        var payload = new JSON
+        {
+            { "days", days },
+            { "compute_prune_count", computePruneCount },
+            { "include_roles", roles?.Select(r => r.Id) ?? [] }
+        };
+        string data = await RequestAsync(Post, Route($"/guilds/{guildId}/prune"), payload, reason);
+        var result = JsonConvert.DeserializeObject<JSON>(data)!;
+        return computePruneCount ? Convert.ToInt32(result.Values.First()) : null;
+    }
+    
+    // UNUSED
+    // https://discord.com/developers/docs/resources/guild#get-guild-voice-regions
+    
+    // Returns a list of invite objects. Requires the MANAGE_GUILD or VIEW_AUDIT_LOG permission. Invite Metadata is
+    // included with the MANAGE_GUILD permission.
+    // https://discord.com/developers/docs/resources/guild#get-guild-invites
+    internal async Task<List<Invite>> GetGuildInvitesAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/invites"));
+        var invites = JsonConvert.DeserializeObject<List<Invite>>(data)!;
+        SetInviteValues(invites);
+        return invites;
+    }
+    
+    // Returns a list of integration objects for the guild. Requires the MANAGE_GUILD permission.
+    // 
+    // This endpoint returns a maximum of 50 integrations. If a guild has more integrations, they cannot be accessed.
+    // https://discord.com/developers/docs/resources/guild#get-guild-integrations
+    internal async Task<List<Integration>> GetGuildIntegrations(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/integrations"));
+        var integrations = JsonConvert.DeserializeObject<List<Integration>>(data)!;
+        foreach (var inte in integrations)
+        {
+            inte.Bot = _bot;
+            inte.GuildId = guildId;
+        }
+        return integrations;
+    }
+    
+    // Delete the attached integration object for the guild. Deletes any associated webhooks and kicks the associated bot
+    // if there is one. Requires the MANAGE_GUILD permission. Returns a 204 empty response on success. Fires Guild
+    // Integrations Update and Integration Delete Gateway events.
+    // https://discord.com/developers/docs/resources/guild#delete-guild-integration
+    internal async Task DeleteGuildIntegrationAsync(ulong guildId, ulong integrationId, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/integrations/{integrationId}"), auditReason: reason);
+    }
+    
+    // Returns a guild widget settings object. Requires the MANAGE_GUILD permission.
+    // https://discord.com/developers/docs/resources/guild#get-guild-widget-settings
+    internal async Task<WidgetSetting> GetGuildWidgetSettingsAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/widget"));
+        return JsonConvert.DeserializeObject<WidgetSetting>(data)!;
+    }
+    
+    // Modify a guild widget settings object for the guild. All attributes may be passed in with JSON and modified.
+    // Requires the MANAGE_GUILD permission. Returns the updated guild widget settings object. Fires a Guild Update
+    // Gateway event.
+    // https://discord.com/developers/docs/resources/guild#modify-guild-widget
+    internal async Task<WidgetSetting> ModifyGuildWidgetAsync(ulong guildId, bool enabled, ulong? channelId, string? reason)
+    {
+        var payload = new JSON
+        {
+            { "enabled", enabled },
+            { "channel_id", channelId }
+        };
+        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/widget"), payload, reason);
+        return JsonConvert.DeserializeObject<WidgetSetting>(data)!;
+    }
+    
+    // Returns the widget for the guild. Fires an Invite Create Gateway event when an invite channel is defined and a
+    // new Invite is generated.
+    // https://discord.com/developers/docs/resources/guild#get-guild-widget
+    internal async Task<Widget> GetGuildWidgetAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/widget.json"));
+        return JsonConvert.DeserializeObject<Widget>(data)!;
+    }
+    
+    // Returns a partial invite object for guilds with that feature enabled. Requires the MANAGE_GUILD permission. code
+    // will be null if a vanity url for the guild is not set.
+    //
+    // This endpoint is required to get the usage count of the vanity invite, but the invite code can be accessed as
+    // vanity_url_code in the guild object without having the MANAGE_GUILD permission.
+    // https://discord.com/developers/docs/resources/guild#get-guild-vanity-url
+    internal async Task<(string? code, int uses)> GetGuildVanityUrlAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/vanity-url"));
+        var doc = JsonDocument.Parse(data);
+        var codeElement = doc.RootElement.GetProperty("code"); 
+        var code = codeElement.ValueKind == JsonValueKind.Null ? null : codeElement.GetString();
+        var uses = doc.RootElement.GetProperty("uses").GetInt32();
+        return (code, uses);
+    }
+    
+    // Returns a PNG image widget for the guild. Requires no permissions or authentication.
+    // https://discord.com/developers/docs/resources/guild#get-guild-widget-image
+    internal async Task<DFile> GetGuildWidgetImageAsync(ulong guildId, WidgetStyle style)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/widget.png?style={style.GetDescription()}"));
+        var bytes = Encoding.UTF8.GetBytes(data);
+        return new DFile("widget.png", bytes);
+    }
+    
+    // TODO:
+    // Not used anymore? I don't see anything regarding welcome screens in the app, unless they've effectively been
+    // replaced by onboarding?? Idk
+    // https://discord.com/developers/docs/resources/guild#get-guild-welcome-screen
+    
+    // TODO:
+    // See above comment.
+    // https://discord.com/developers/docs/resources/guild#modify-guild-welcome-screen
+    
+    // Returns the Onboarding object for the guild.
+    // https://discord.com/developers/docs/resources/guild#get-guild-onboarding
+    internal async Task<Onboarding> GetGuildOnboardingAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/onboarding"));
+        return JsonConvert.DeserializeObject<Onboarding>(data)!;
+    }
+    
+    // Modifies the onboarding configuration of the guild. Returns a 200 with the Onboarding object for the guild.
+    // Requires the MANAGE_GUILD and MANAGE_ROLES permissions.
+    // 
+    // Onboarding enforces constraints when enabled. These constraints are that there must be at least 7 Default Channels
+    // and at least 5 of them must allow sending messages to the @everyone role. The mode field modifies what is considered
+    // when enforcing these constraints.
+    // https://discord.com/developers/docs/resources/guild#modify-guild-onboarding
+    internal async Task<Onboarding> ModifyGuildOnboardingAsync(ulong guildId, JSON payload, string? reason)
+    {
+        string data = await RequestAsync(Put, Route($"/guilds/{guildId}/onboarding"), payload, reason);
+        return JsonConvert.DeserializeObject<Onboarding>(data)!;
+    }
+    
+    // Modifies the incident actions of the guild. Returns a 200 with the Incidents Data object for the guild. Requires
+    // the MANAGE_GUILD permission.
+    // 
+    // Both invites_disabled_until and dms_disabled_until can be enabled for a maximal timespan of 24 hours in the future.
+    // https://discord.com/developers/docs/resources/guild#modify-guild-incident-actions
+    internal async Task<Incidents> ModifyGuildIncidentActions(ulong guildId, JSON payload)
+    {
+        string data = await RequestAsync(Put, Route($"/guilds/{guildId}/incident-actions"), payload);
+        return JsonConvert.DeserializeObject<Incidents>(data)!;
+    }
+
+    #endregion
+
+    #region INVITE
+
+    private void SetInviteValues(IEnumerable<Invite> invites)
+    {
+        foreach (var invite in invites)
+            invite.Bot = _bot;
+    }
+
+    // Returns an invite object for the given code.
+    // https://discord.com/developers/docs/resources/invite#get-invite
+    internal async Task<Invite> GetInviteAsync(string code, bool withCounts, ulong? eventId)
+    {
+        string route = Route($"/invites/{code}?with_counts={withCounts}");
+        if (eventId is not null) route += $"&guild_scheduled_event_id={eventId.Value}";
+        string data = await RequestAsync(Get, route);
+        var invite = JsonConvert.DeserializeObject<Invite>(data)!;
+        SetInviteValues([invite]);
+        return invite;
+    }
+    
+    // Delete an invite. Requires the MANAGE_CHANNELS permission on the channel this invite belongs to, or MANAGE_GUILD
+    // to remove any invite across the guild. Returns an invite object on success. Fires an Invite Delete Gateway event.
+    // https://discord.com/developers/docs/resources/invite#delete-invite
+    internal async Task DeleteInviteAsync(string code, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/invites/{code}"), auditReason: reason);
+    }
+
     #endregion
     
     #region STICKER

@@ -3,6 +3,7 @@ using System.Text.Json;
 using Discord.Models;
 using Discord.Net;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Discord.Utility;
 
@@ -35,9 +36,9 @@ public static class Util
     /// <returns>The DateTime converted into a snowflake.</returns>
     public static ulong DateTimeToSnowflake(DateTime dt)
     {
-        DateTimeOffset dto = new(dt.ToUniversalTime());
+        DateTimeOffset dto = dt.ToUniversalTime();
         var timestamp = (ulong)(dto.ToUnixTimeSeconds() * 1000) - DiscordEpoch;
-        return (ulong)((timestamp << 22) + Math.Pow(2.0, 22.0));
+        return (ulong)((timestamp << 22) + Math.Pow(2, 22));
     }
     
     /// <summary>
@@ -45,7 +46,7 @@ public static class Util
     /// </summary>
     /// <param name="uris">URLs to extract the data from. These must end in a path extension: <c>.png</c>, <c>.gif</c>, <c>.mp3</c> etc.</param>
     /// <param name="timeout">When the download will time out (defaults to 30 seconds).</param>
-    /// <returns>All URLs converted into a list of <see cref="DFile"/>.</returns>
+    /// <returns>All URLs converted into a <see cref="DFile"/>.</returns>
     /// <exception cref="ArgumentException">Not all URLs ended in a path extension.</exception>
     public static async IAsyncEnumerable<DFile> DownloadAsync(IReadOnlyCollection<Uri> uris, TimeSpan? timeout = null)
     {
@@ -72,12 +73,9 @@ public static class Util
     }
 
     /// <summary>
-    /// A non-IAsyncEnumerable shortcut version for method <see cref="DownloadAsync(IReadOnlyCollection{Uri},TimeSpan?)"/>
+    /// A non-IAsyncEnumerable wrapper shortcut for <see cref="DownloadAsync(IReadOnlyCollection{Uri},TimeSpan?)"/>
     /// </summary>
-    /// <param name="uri"></param>
-    /// <param name="timeout"></param>
-    /// <returns></returns>
-    /// <exception cref="InvalidOperationException">l</exception>
+    /// <exception cref="InvalidOperationException">The file could not be downloaded.</exception>
     public static async Task<DFile> DownloadAsync(Uri uri, TimeSpan? timeout = null)
     {
         await foreach (var file in DownloadAsync([uri], timeout))
@@ -385,8 +383,10 @@ internal static class Dev
         Console.WriteLine(m);
     }
 
-    internal static void PrettyPrint(object json)
+    internal static void PrettyPrint(string json)
     {
-        Console.WriteLine(JsonConvert.SerializeObject(json, Formatting.Indented));
+        var parsed = JToken.Parse(json);
+        string prettyJson = parsed.ToString(Formatting.Indented);
+        Console.WriteLine(prettyJson);
     }
 }

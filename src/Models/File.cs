@@ -11,12 +11,12 @@ public record DFile
     /// <summary>
     /// Name of the file and its extension.
     /// </summary>
-    public string Name;
+    public string Name { get; set; }
 
     /// <summary>
     /// Bytes that represent the file.
     /// </summary>
-    public readonly byte[] Bytes;
+    public byte[] Bytes { get; }
 
     /// <summary>
     /// Whether the file is blurred as a spoiler.

@@ -130,7 +130,7 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Enabled guild features.
     /// </summary>
-    public IReadOnlyCollection<GuildFeature> Features => ParseGuildFeatures(_features);
+    public IReadOnlyCollection<GuildFeature> Features => ParseFeatures(_features);
     [JsonProperty("features")] internal List<string> _features = [];
     
     /// <summary>
@@ -265,7 +265,7 @@ public class Guild : IEquatable<Guild>
     /// Incidents data for the guild.
     /// </summary>
     [JsonProperty("incidents_data")]
-    public Incidents? IncidentsData { get; }
+    public Incidents? IncidentsData { get; internal set; }
 
     #endregion
 
@@ -319,7 +319,7 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Your bots member object for this guild.
     /// </summary>
-    public Member Self { get; private set; }
+    public Member Self { get; internal set; }
     
     /// <summary>
     /// When the guild was last chunked, or <c>null</c> if never. This refers to when the chunk was initiated, not when
@@ -329,11 +329,20 @@ public class Guild : IEquatable<Guild>
     
     #endregion
     
+    private Guild() { }
+    
     public override bool Equals(object? other) => other is Guild guild && Equals(guild);
     public bool Equals(Guild? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
     
     #region PUBLIC
+
+    // TODO
+    // <remarks>Requires <see cref="Permission.ManageGuild"/>.</remarks>
+    public async Task EditAsync(GuildEdit edit)
+    {
+        throw new NotImplementedException();
+    }
 
     /// <summary>
     /// Requests all emojis in the guild.
@@ -570,6 +579,14 @@ public class Guild : IEquatable<Guild>
             yield return yielded;
         } while (hasMore);
     }
+    
+    /// <summary>
+    /// Retrieves a member from the cache.
+    /// </summary>
+    /// <param name="id">Member ID.</param>
+    /// <returns>The member matching the given ID, or <c>null</c> if not found.</returns>
+    public Member? GetMember(ulong id) =>
+        Members.FirstOrDefault(m => m.Id == id);
 
     /// <summary>
     /// Searches all member usernames/nicknames and selects each member that start with the given string.
@@ -608,12 +625,258 @@ public class Guild : IEquatable<Guild>
     }
     
     /// <summary>
-    /// Retrieves a member from the cache.
+    /// Removes a member from the guild.
     /// </summary>
-    /// <param name="id">Member ID.</param>
-    /// <returns>The member matching the given ID, or <c>null</c> if not found.</returns>
-    public Member? GetMember(ulong id) =>
-        Members.FirstOrDefault(m => m.Id == id);
+    /// <param name="member">Member to remove.</param>
+    /// <param name="reason">The reason for removing the member. This is displayed in the audit-log.</param>
+    /// <remarks>Requires <see cref="Permission.KickMembers"/>.</remarks>
+    public async Task KickAsync(Member member, string? reason = null)
+    {
+        await Bot._rest.RemoveGuildMemberAsync(Id, member.Id, reason);
+    }
+
+    /// <summary>
+    /// Requests ban records for the guild.
+    /// </summary>
+    /// <param name="amount">Amount of ban records to return (max 1000 yielded per loop), or <c>null</c> for all records.</param>
+    /// <param name="before">A user ID. Considers only users before the given ID.</param>
+    /// <param name="after">A user ID. Considers only users after the given ID.</param>
+    /// <returns>The requested amount of ban records.</returns>
+    /// <exception cref="DiscordException"> Only one parameter (<paramref name="before"/> or <paramref name="after"/>)
+    /// can be used, not both.
+    /// </exception>
+    /// <remarks>Requires <see cref="Permission.BanMembers"/>. Each batch of records is sorted in ascending order (by Discord)
+    /// according to their user ID.
+    /// </remarks>
+    public async IAsyncEnumerable<List<BanRecord>> BanRecordsAsync(int? amount = 1000, ulong? before = null, ulong? after = null)
+    {
+        // TODO: This method has not been fully tested due to not having access to a guild with more than 1000 bans.
+        
+        if (before is not null && after is not null)
+            throw new DiscordException("Either parameter 'before' or 'after' can be used, not both.");
+        
+        const int indefinite = -1;
+        var remaining = amount ?? indefinite;
+        
+        var hasMore = true;
+        var yielded = new List<BanRecord>();
+        
+        do
+        {
+            yielded.Clear();
+            var requestAmount = remaining == indefinite ? 1000 : Math.Min(remaining, 1000);
+            var bans = await Bot._rest.GetGuildBansAsync(Id, requestAmount, before, after);
+            if (bans.Count < 1000)
+                hasMore = false;
+
+            foreach (var ban in bans)
+            {
+                yielded.Add(ban);
+                if (remaining == indefinite) continue;
+
+                remaining -= 1;
+                if (remaining == 0)
+                    hasMore = false;
+            }
+
+            before = bans.LastOrDefault()?.User.Id ?? 0;
+            after = before;
+            yield return yielded;
+        } while (hasMore);
+    }
+
+    /// <summary>
+    /// Requests a ban record.
+    /// </summary>
+    /// <param name="id">User ID associated with the ban record.</param>
+    /// <returns>The requested record.</returns>
+    public async Task<BanRecord> BanRecordAsync(ulong id) =>
+        await Bot._rest.GetGuildBanAsync(Id, id);
+
+    /// <summary>
+    /// Ban a user from the guild.
+    /// </summary>
+    /// <param name="id">ID of the user to ban.</param>
+    /// <param name="deleteMessages">Amount of seconds (max 604800 aka 7 days) worth of messages to delete from the
+    /// guild that were sent by the user. Defaults to 1 day.
+    /// </param>
+    /// <param name="reason">The reason for banning the user. This is displayed in the audit-log.</param>
+    /// <remarks>Requires <see cref="Permission.BanMembers"/>.</remarks>
+    public async Task BanAsync(ulong id, TimeSpan? deleteMessages = null, string? reason = null)
+    {
+        await Bot._rest.CreateGuildBanAsync(Id, id, deleteMessages ?? TimeSpan.FromDays(1), reason);
+    }
+
+    /// <summary>
+    /// Unban a user from the guild.
+    /// </summary>
+    /// <param name="id">ID of the user to unban.</param>
+    /// <param name="reason">The reason for unbanning the user. This is displayed in the audit-log.</param>
+    /// <remarks>Requires <see cref="Permission.BanMembers"/>.</remarks>
+    public async Task UnbanAsync(ulong id, string? reason = null)
+    {
+        await Bot._rest.RemoveGuildBanAsync(Id, id, reason);
+    }
+
+    /// <summary>
+    /// Ban multiple users from the guild at once.
+    /// </summary>
+    /// <param name="ids">ID's of the users to ban (max 200).</param>
+    /// <param name="deleteMessages">Amount of seconds (max 604800 aka 7 days) worth of messages to delete from the
+    /// guild that were sent by the user. Defaults to 1 day.</param>
+    /// <param name="reason">The reason for bulk-banning the users. This is displayed in the audit-log.</param>
+    /// <returns>A named tuple containing <c>bannedUsers</c> (users who were successfully banned) and <c>failedUsers</c>
+    /// (users who were not banned).</returns>
+    /// <remarks>Requires <see cref="Permission.BanMembers"/> and <see cref="Permission.ManageGuild"/>.</remarks>
+    public async Task<(List<ulong> bannedUsers, List<ulong> failedUsers)> BulkBanAsync(IEnumerable<ulong> ids,
+        TimeSpan? deleteMessages = null, string? reason = null)
+    {
+        var payload = new JSON
+        {
+            { "user_ids", ids },
+            { "delete_message_seconds", (deleteMessages ?? TimeSpan.FromDays(1)).TotalSeconds }
+        };
+        return await Bot._rest.BulkGuildBanAsync(Id, payload, reason);
+    }
+
+    /// <summary>
+    /// Get the amount of members that would be pruned.
+    /// </summary>
+    /// <param name="days">Number of days to count prune for (1-30)</param>
+    /// <param name="roles">Role(s) to include, due to the prune operation excluding members with roles by default.</param>
+    /// <returns>The amount of members that would be pruned.</returns>
+    /// <remarks>Requires <see cref="Permission.ManageGuild"/> and <see cref="Permission.KickMembers"/>.</remarks>
+    public async Task<int> PruneCountAsync(int days, IEnumerable<Role>? roles = null) =>
+        await Bot._rest.GetGuildPruneCountAsync(Id, days, roles);
+
+    /// <summary>
+    /// Prune the guild.
+    /// </summary>
+    /// <param name="days">Number of days to prune (1-30).</param>
+    /// <param name="computePruneCount">Whether the pruned count is returned, discouraged for large guilds.</param>
+    /// <param name="roles">Role(s) to include, due to the prune operation excluding members with roles by default.</param>
+    /// <param name="reason">The reason for pruning the guild. This is displayed in the audit-log.</param>
+    /// <returns>The amount of members that were pruned, or <c>null</c> if <paramref name="computePruneCount"/> is <c>false</c></returns>
+    /// <remarks>Requires <see cref="Permission.ManageGuild"/> and <see cref="Permission.KickMembers"/>.</remarks>
+    public async Task<int?> PruneAsync(int days, bool computePruneCount = true, IEnumerable<Role>? roles = null, string? reason = null) =>
+        await Bot._rest.BeginGuildPruneAsync(Id, days, computePruneCount, roles, reason);
+    
+    /// <summary>
+    /// Invites for the guild.
+    /// </summary>
+    /// <returns>All invites for the guild.</returns>
+    /// <remarks>Requires <see cref="Permission.ManageGuild"/> or <see cref="Permission.ViewAuditLog"/>.</remarks>
+    public async Task<IEnumerable<Invite>> InvitesAsync() =>
+        await Bot._rest.GetGuildInvitesAsync(Id);
+
+    /// <summary>
+    /// Integrations for the guild.
+    /// </summary>
+    /// <returns>A maximum of 50 integrations. If a guild has more integrations, they cannot be accessed.</returns>
+    /// <remarks>Requires <see cref="Permission.ManageGuild"/>.</remarks>
+    public async Task<ICollection<Integration>> IntegrationsAsync() =>
+        await Bot._rest.GetGuildIntegrations(Id);
+
+    /// <summary>
+    /// Basic information for the widget.
+    /// </summary>
+    /// <returns>The widgets settings.</returns>
+    public async Task<WidgetSetting> WidgetSettingsAsync() =>
+        await Bot._rest.GetGuildWidgetSettingsAsync(Id);
+
+    /// <summary>
+    /// Enable/disable the widget.
+    /// </summary>
+    /// <param name="enabled">Whether the widget is enabled.</param>
+    /// <param name="channelId">The widget channel ID.</param>
+    /// <param name="reason">The reason for editing the widget. This is displayed in the audit-log.</param>
+    /// <returns>The updated widget settings.</returns>
+    /// <remarks>Requires <see cref="Permission.ManageGuild"/>.</remarks>
+    public async Task<WidgetSetting> EditWidgetAsync(bool enabled, ulong? channelId = null, string? reason = null) =>
+        await Bot._rest.ModifyGuildWidgetAsync(Id, enabled, channelId, reason);
+
+    /// <summary>
+    /// Widget for the guild (if enabled). Use <see cref="WidgetSettingsAsync"/> to see if the widget is enabled/disabled.
+    /// </summary>
+    /// <returns>The active widget.</returns>
+    public async Task<Widget> WidgetAsync() =>
+        await Bot._rest.GetGuildWidgetAsync(Id);
+
+    /// <summary>
+    /// The vanity URL code and its uses.
+    /// </summary>
+    /// <returns>A named tuple containing the vanity code and its uses. <c>code</c> can be <c>null</c> if a vanity URL
+    /// for the guild is not set.
+    /// </returns>
+    /// <remarks>Requires <see cref="Permission.ManageGuild"/>. The invite code can be accessed via <see cref="Guild.VanityUrlCode"/>
+    /// without the above stated permission.
+    /// </remarks>
+    public async Task<(string? code, int uses)> VanityUrlAsync() =>
+        await Bot._rest.GetGuildVanityUrlAsync(Id);
+    
+    /// <summary>
+    /// The widget image.
+    /// </summary>
+    /// <param name="style">Widget style.</param>
+    /// <returns>A file that represents the widget image.</returns>
+    public async Task<DFile> WidgetImageAsync(WidgetStyle style = WidgetStyle.Shield) =>
+        await Bot._rest.GetGuildWidgetImageAsync(Id, style);
+    
+    /// <summary>
+    /// The onboarding for the guild.
+    /// </summary>
+    /// <returns>The guilds onboarding even if it's disabled.</returns>
+    public async Task<Onboarding> OnboardingAsync() =>
+        await Bot._rest.GetGuildOnboardingAsync(Id);
+    
+    /// <summary>
+    /// Update the guilds onboarding.
+    /// </summary>
+    /// <param name="enabled">Whether onboarding is enabled in the guild.</param>
+    /// <param name="prompts">Prompts shown during onboarding and in customize community.</param>
+    /// <param name="mode">Current mode of onboarding.</param>
+    /// <param name="defaultChannelIds">Channel IDs that members get opted into automatically.</param>
+    /// <param name="reason">The reason for editing the onboarding. This is displayed in the audit-log.</param>
+    /// <returns>The updated onboarding.</returns>
+    /// <remarks>Requires <see cref="Permission.ManageGuild"/> and <see cref="Permission.ManageRoles"/>.
+    /// Onboarding enforces constraints when enabled. These constraints are that there must be at least 7 Default Channels
+    /// and at least 5 of them must allow sending messages to the <c>@everyone</c> role. <see cref="Onboarding.Mode"/>
+    /// modifies what is considered when enforcing these constraints.
+    /// </remarks>
+    public async Task<Onboarding> EditOnboardingAsync(bool enabled, ICollection<OnboardingPrompt>? prompts = null,
+        OnboardingPromptType? mode = null, ICollection<ulong>? defaultChannelIds = null, string? reason = null)
+    {
+        var payload = new JSON { { "enabled", enabled } };
+        if (prompts is not null) payload.Add("prompts", prompts);
+        if (mode is not null) payload.Add("mode", mode);
+        if (defaultChannelIds is not null) payload.Add("default_channel_ids", defaultChannelIds);
+        return await Bot._rest.ModifyGuildOnboardingAsync(Id, payload, reason);
+    }
+
+    /// <summary>
+    /// Edit guild incident data such as disabling (pausing) invites, direct messages, etc.
+    /// </summary>
+    /// <param name="edit">An incident actions edit.</param>
+    /// <remarks>Requires <see cref="Permission.ManageGuild"/>.</remarks>
+    public async Task<Incidents> EditIncidentActionsAsync(IncidentActionsEdit edit)
+    {
+        var updated = new JSON();
+        foreach (var (key, span) in edit._payload)
+            updated[key] = span is not null ? DateTime.UtcNow.Add(span.Value) : null;
+        return await Bot._rest.ModifyGuildIncidentActions(Id, updated);
+    }
+
+    /// <summary>
+    /// A shortcut to determine whether invites are currently disabled (paused) for the guild.
+    /// </summary>
+    /// <returns>Whether invites are disabled.</returns>
+    public bool InvitesDisabled() => IncidentsData?.InvitesDisabledUntil is not null;
+    
+    /// <summary>
+    /// A shortcut to determine whether DMs are currently disabled (paused) for the guild.
+    /// </summary>
+    /// <returns>Whether DMs are disabled.</returns>
+    public bool DmsDisabled() => IncidentsData?.DmDisabledUntil is not null;
     
     #endregion
 
@@ -651,12 +914,13 @@ public class Guild : IEquatable<Guild>
         }
     }
     
+    // TODO
     internal void Update(JsonElement element)
     {
         throw new NotImplementedException();
     }
     
-    private static HashSet<GuildFeature> ParseGuildFeatures(ICollection<string> features)
+    internal static HashSet<GuildFeature> ParseFeatures(ICollection<string> features)
     {
         HashSet<GuildFeature> fts = [];
         foreach (GuildFeature e in Enum.GetValues(typeof(GuildFeature)))
@@ -682,10 +946,459 @@ public class Guild : IEquatable<Guild>
 }
 
 /// <summary>
+/// Represents the values that can be edited for a <see cref="Guild"/>s incident action.
+/// </summary>
+public struct IncidentActionsEdit
+{
+    internal Dictionary<string, TimeSpan?> _payload = [];
+    
+    /// <summary>
+    /// Initializes a new incident actions edit instance.
+    /// </summary>
+    public IncidentActionsEdit() { }
+
+    /// <summary>
+    /// Set invites disabled.
+    /// </summary>
+    /// <param name="for">When invites will be enabled again (max 24 hours), or <c>null</c> to disable the action.</param>
+    /// <returns>The edit instance.</returns>
+    public IncidentActionsEdit SetInvitesDisabled(TimeSpan? @for)
+    {
+        _payload["invites_disabled_until"] = @for;
+        return this;
+    }
+    
+    /// <summary>
+    /// Set DMs disabled.
+    /// </summary>
+    /// <param name="for">When direct messages will be enabled again (max 24 hours), or <c>null</c> to disable the action.</param>
+    /// <returns>The edit instance.</returns>
+    public IncidentActionsEdit SetDmsDisabled(TimeSpan? @for)
+    {
+        _payload["dms_disabled_until"] = @for;
+        return this;
+    }
+}
+
+/// <summary>
+/// Represents the onboarding for a <see cref="Guild"/>.
+/// </summary>
+public record Onboarding
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-onboarding-object-guild-onboarding-structure
+    
+    /// <summary>
+    /// ID of the guild this onboarding is part of.
+    /// </summary>
+    [JsonProperty("guild_id")]
+    public ulong GuildId { get; init; }
+    
+    /// <summary>
+    /// Prompts shown during onboarding and in customize community.
+    /// </summary>
+    [JsonProperty("prompts")]
+    public required IReadOnlyCollection<OnboardingPrompt> Prompts { get; init; }
+    
+    /// <summary>
+    /// Channel IDs that members get opted into automatically.
+    /// </summary>
+    [JsonProperty("default_channel_ids")]
+    public required IReadOnlyCollection<ulong> DefaultChannelIds { get; init; }
+    
+    /// <summary>
+    /// Whether onboarding is enabled in the guild.
+    /// </summary>
+    [JsonProperty("enabled")]
+    public bool Enabled { get; init; }
+    
+    /// <summary>
+    /// Current mode of onboarding.
+    /// </summary>
+    [JsonProperty("mode")]
+    public OnboardingMode Mode { get; init; }
+    
+    private Onboarding() { }
+}
+
+/// <summary>
+/// Represents an <see cref="Onboarding"/> prompt.
+/// </summary>
+/// <param name="Id">ID of the prompt.</param>
+/// <param name="Type">Type of prompt.</param>
+/// <param name="Options">Options available within the prompt.</param>
+/// <param name="Title">Title of the prompt.</param>
+/// <param name="IsSingleSelect">Indicates whether users are limited to selecting one option for the prompt.</param>
+/// <param name="IsRequired">Indicates whether the prompt is required before a user completes the onboarding flow.</param>
+/// <param name="InOnboarding">Indicates whether the prompt is present in the onboarding flow. If <c>false</c>, the prompt will only appear in
+/// the Channels and Roles tab.</param>
+public record OnboardingPrompt(
+    ulong Id,
+    OnboardingPromptType Type,
+    ICollection<OnboardingPromptOption> Options,
+    string Title,
+    bool IsSingleSelect,
+    bool IsRequired,
+    bool InOnboarding)
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-onboarding-object-onboarding-prompt-structure
+    
+    /// <summary>
+    /// ID of the prompt.
+    /// </summary>
+    [JsonProperty("id")]
+    public ulong Id { get; set; } = Id;
+
+    /// <summary>
+    /// Type of prompt.
+    /// </summary>
+    [JsonProperty("type")]
+    public OnboardingPromptType Type { get; set; } = Type;
+
+    /// <summary>
+    /// Options available within the prompt.
+    /// </summary>
+    [JsonProperty("options")]
+    public ICollection<OnboardingPromptOption> Options { get; set; } = Options;
+
+    /// <summary>
+    /// Title of the prompt.
+    /// </summary>
+    [JsonProperty("title")]
+    public string Title { get; set; } = Title;
+
+    /// <summary>
+    /// Indicates whether users are limited to selecting one option for the prompt.
+    /// </summary>
+    [JsonProperty("single_select")]
+    public bool IsSingleSelect { get; set; } = IsSingleSelect;
+
+    /// <summary>
+    /// Indicates whether the prompt is required before a user completes the onboarding flow.
+    /// </summary>
+    [JsonProperty("required")]
+    public bool IsRequired { get; set; } = IsRequired;
+
+    /// <summary>
+    /// Indicates whether the prompt is present in the onboarding flow. If <c>false</c>, the prompt will only appear in
+    /// the Channels and Roles tab.
+    /// </summary>
+    [JsonProperty("in_onboarding")]
+    public bool InOnboarding { get; set; } = InOnboarding;
+}
+
+/// <summary>
+/// Represents an <see cref="OnboardingPrompt"/> option.
+/// </summary>
+public record OnboardingPromptOption
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-onboarding-object-prompt-option-structure
+    
+    /// <summary>
+    /// ID of the prompt option.
+    /// </summary>
+    [JsonProperty("id")]
+    public ulong Id { get; set; }
+
+    /// <summary>
+    /// IDs for channels a member is added to when the option is selected.
+    /// </summary>
+    [JsonProperty("channel_ids")]
+    public ICollection<ulong> ChannelIds { get; set; }
+
+    /// <summary>
+    /// IDs for roles assigned to a member when the option is selected.
+    /// </summary>
+    [JsonProperty("role_ids")]
+    public ICollection<ulong> RoleIds { get; set; }
+    
+    /// <summary>
+    /// Emoji of the option.
+    /// </summary>
+    [JsonProperty("emoji")]
+    public PartialEmoji? Emoji { get; set; }
+    
+    /// <summary>
+    /// Emoji ID of the option.
+    /// </summary>
+    [JsonProperty("emoji_id")]
+    public ulong? EmojiId { get; set; }
+    
+    /// <summary>
+    /// Emoji name of the option.
+    /// </summary>
+    [JsonProperty("emoji_name")]
+    public string? EmojiName { get; set; }
+    
+    /// <summary>
+    /// Whether the emoji is animated.
+    /// </summary>
+    [JsonProperty("emoji_animated")]
+    public bool? EmojiAnimated { get; set; }
+    
+    /// <summary>
+    /// Title of the option.
+    /// </summary>
+    [JsonProperty("title")]
+    public string Title { get; set; }
+    
+    /// <summary>
+    /// Description of the option.
+    /// </summary>
+    [JsonProperty("description")]
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// Initialize a prompt option.
+    /// </summary>
+    /// <param name="id">ID of the prompt option.</param>
+    /// <param name="channelIds">IDs for channels a member is added to when the option is selected.</param>
+    /// <param name="roleIds">IDs for roles assigned to a member when the option is selected.</param>
+    /// <param name="title">Title of the option.</param>
+    /// <param name="description">Description of the option.</param>
+    /// <param name="emoji">Emoji of the option. After instantiation, properties <see cref="EmojiId"/>, <see cref="EmojiName"/>,
+    /// and <see cref="EmojiAnimated"/> should not be updated separately.
+    /// </param>
+    public OnboardingPromptOption(ulong id, ICollection<ulong> channelIds, ICollection<ulong> roleIds, string title,
+        string? description, PartialEmoji? emoji)
+    {
+        Id = id;
+        ChannelIds = channelIds;
+        RoleIds = roleIds;
+        Title = title;
+        Description = description;
+        EmojiId = emoji?.Id;
+        EmojiName = emoji?.Name;
+        EmojiAnimated = emoji?.IsAnimated;
+    }
+}
+
+/// <summary>
+/// Represents an <see cref="Onboarding"/> mode.
+/// </summary>
+public enum OnboardingMode
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-onboarding-object-onboarding-mode
+    
+    /// <summary>
+    /// Counts only Default Channels towards constraints.
+    /// </summary>
+    Default,
+    
+    /// <summary>
+    /// Counts Default Channels and Questions towards constraints.
+    /// </summary>
+    Advanced
+}
+
+/// <summary>
+/// Represents an <see cref="OnboardingPrompt"/> type.
+/// </summary>
+public enum OnboardingPromptType
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-onboarding-object-prompt-types
+    
+    MultipleChoice,
+    Dropdown
+}
+
+/// <summary>
+/// Represents a <see cref="Widget"/> image style.
+/// </summary>
+public enum WidgetStyle
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#get-guild-widget-image-widget-style-options
+    
+    /// <summary>
+    /// Shield style widget with Discord icon and guild members online count
+    /// (<a href="https://discord.com/api/guilds/81384788765712384/widget.png?style=shield">example</a>)
+    /// </summary>
+    [Description("shield")]
+    Shield,
+    
+    /// <summary>
+    /// Large image with guild icon, name and online count. "POWERED BY DISCORD" as the footer of the widget
+    /// (<a href="https://discord.com/api/guilds/81384788765712384/widget.png?style=banner1">example</a>)
+    /// </summary>
+    [Description("banner1")]
+    Banner1,
+    
+    /// <summary>
+    /// Smaller widget style with guild icon, name and online count. Split on the right with Discord logo
+    /// (<a href="https://discord.com/api/guilds/81384788765712384/widget.png?style=banner2">example</a>)
+    /// </summary>
+    [Description("banner2")]
+    Banner2,
+    
+    /// <summary>
+    /// Large image with guild icon, name and online count. In the footer, Discord logo on the left and "Chat Now" on
+    /// the right (<a href="https://discord.com/api/guilds/81384788765712384/widget.png?style=banner3">example</a>)
+    /// </summary>
+    [Description("banner3")]
+    Banner3,
+    
+    /// <summary>
+    /// Large Discord logo at the top of the widget. Guild icon, name and online count in the middle portion of the
+    /// widget and a "JOIN MY SERVER" button at the bottom (<a href="https://discord.com/api/guilds/81384788765712384/widget.png?style=banner4">example</a>)
+    /// </summary>
+    [Description("banner4")]
+    Banner4
+}
+
+/// <summary>
+/// Represents a <see cref="Widget"/> setting for a <see cref="Guild"/>.
+/// </summary>
+public record WidgetSetting
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-widget-settings-object
+    
+    /// <summary>
+    /// Whether the widget is enabled.
+    /// </summary>
+    [JsonProperty("enabled")]
+    public bool Enabled { get; init; }
+    
+    /// <summary>
+    /// The widget channel ID.
+    /// </summary>
+    [JsonProperty("channel_id")]
+    public ulong? ChannelId { get; init; }
+    
+    private WidgetSetting() { }
+}
+
+/// <summary>
+/// Represents a <see cref="Guild"/> widget.
+/// </summary>
+public record Widget
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-widget-object
+    
+    /// <summary>
+    /// Guild ID.
+    /// </summary>
+    [JsonProperty("id")]
+    public ulong Id { get; init; }
+    
+    /// <summary>
+    /// Guild name.
+    /// </summary>
+    [JsonProperty("name")]
+    public required string Name { get; init; }
+    
+    /// <summary>
+    /// Instant invite for the guilds specified widget invite channel.
+    /// </summary>
+    [JsonProperty("instant_invite")]
+    public string? InstantInvite { get; init; }
+    
+    /// <summary>
+    /// Voice and stage channels which are accessible by <c>@everyone</c>.
+    /// </summary>
+    [JsonProperty("channels")]
+    public required IReadOnlyCollection<PartialWidgetChannel> Channels { get; init; } 
+    
+    /// <summary>
+    /// Users in the guild (max 100).
+    /// </summary>
+    [JsonProperty("members")]
+    public required IReadOnlyCollection<PartialWidgetMember> Members { get; init; } 
+    
+    /// <summary>
+    /// Number of online members in this guild.
+    /// </summary>
+    [JsonProperty("presence_count")]
+    public int PresenceCount { get; init; }
+    
+    private Widget() { }
+}
+
+/// <summary>
+/// Represents a partial member associated with a <see cref="Widget"/>.
+/// </summary>
+public record PartialWidgetMember
+{
+    /// <summary>
+    /// This ID is not your typical Snowflake. According to Discord, this is anonymized to prevent abuse.
+    /// </summary>
+    [JsonProperty("id")]
+    public ulong Id { get; init; }
+    
+    /// <summary>
+    /// The user's username, not unique across the platform.
+    /// </summary>
+    [JsonProperty("username")]
+    public required string Username { get; init; }
+
+    /// <summary>
+    /// The user's status.
+    /// </summary>
+    public StatusType Status => User.ParseStatus(_status);
+    [JsonProperty("status")] private string _status = string.Empty;
+    
+    /// <summary>
+    /// Avatar URL. According to Discord, this is anonymized to prevent abuse.
+    /// </summary>
+    [JsonProperty("avatar_url")] 
+    public required string AvatarUrl { get; init; }
+    
+    private PartialWidgetMember() { }
+}
+
+/// <summary>
+/// Represents a partial channel associated with a <see cref="Widget"/>.
+/// </summary>
+public record PartialWidgetChannel
+{
+    /// <summary>
+    /// Channel ID.
+    /// </summary>
+    [JsonProperty("id")]
+    public ulong Id { get; init; }
+    
+    /// <summary>
+    /// Name of the channel.
+    /// </summary>
+    [JsonProperty("name")]
+    public required string Name { get; init; }
+    
+    /// <summary>
+    /// Sorting position of the channel.
+    /// </summary>
+    [JsonProperty("position")]
+    public int Position { get; init; }
+    
+    private PartialWidgetChannel() { }
+}
+
+/// <summary>
+/// Represents a ban for a <see cref="Guild"/>.
+/// </summary>
+public record BanRecord
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#ban-object
+    
+    /// <summary>
+    /// The reason for the ban.
+    /// </summary>
+    [JsonProperty("reason")]
+    public string? Reason { get; init; }
+    
+    /// <summary>
+    /// The banned user.
+    /// </summary>
+    [JsonProperty("user")]
+    public required User User { get; init; }
+    
+    private BanRecord() {}
+}
+
+/// <summary>
 /// Represents a user's voice state.
 /// </summary>
 public record VoiceState
 {
+    // DOCS: https://discord.com/developers/docs/resources/voice#voice-state-object
+    
     /// <summary>
     /// The channel ID this user is connected to.
     /// </summary>
@@ -769,8 +1482,10 @@ public struct GuildEdit
     public GuildEdit() { }
 
     /// <summary>
-    /// The new name for the guild.
+    /// Set the guild name.
     /// </summary>
+    /// <param name="name">Guild name.</param>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetName(string name)
     {
         _payload["name"] = name;
@@ -778,8 +1493,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new verification level for the guild.
+    /// Set the guild verification level.
     /// </summary>
+    /// <param name="verificationLevel">Verification level.</param>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetVerificationLevel(GuildVerificationLevel? verificationLevel)
     {
         _payload["verification_level"] = verificationLevel;
@@ -787,8 +1504,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new default notification level for the guild.
+    /// Set the guild message notification level.
     /// </summary>
+    /// <param name="notificationLevel">Notification level.</param>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetMessageNotificationLevel(GuildMessageNotificationLevel? notificationLevel)
     {
         _payload["default_message_notifications"] = notificationLevel;
@@ -796,8 +1515,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new explicit content filter for the guild.
+    /// Set the guild explicit content filter.
+    /// <param name="explicitContentFilterLevel">Filter level.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetExplicitContentFilterLevel(GuildExplicitContentFilterLevel? explicitContentFilterLevel)
     {
         _payload["explicit_content_filter"] = explicitContentFilterLevel;
@@ -805,8 +1526,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new AFK channel. Can be set to <c>null</c> to disable AFK channels.
+    /// Set the AFK channel. Can be set to <c>null</c> to disable AFK channels.
+    /// <param name="id">Channel ID.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetAfkChannel(ulong? id)
     {
         _payload["afk_channel_id"] = id;
@@ -816,25 +1539,22 @@ public struct GuildEdit
     /// <summary>
     /// Update the amount of time it takes for someone to be automatically moved to the AFK channel.
     /// </summary>
-    /// <remarks>
-    /// The only valid time intervals are:
-    /// <list type="bullet">
-    ///     <item>60 (1 minute)</item>
-    ///     <item>300 (5 minutes)</item>
-    ///     <item>900 (15 minutes)</item>
-    ///     <item>1800 (30 minutes)</item>
-    ///     <item>3600 (60 minutes)</item>
-    /// </list>
-    /// </remarks>
-    public GuildEdit SetAfkTimeout(int? value)
+    /// <param name="value">The only valid time intervals are: 60 (1 minute), 300 (5 minutes), 900 (15 minutes),
+    /// 1800 (30 minutes), and 3600 (60 minutes)
+    /// </param>
+    /// <returns>The edit instance.</returns>
+    public GuildEdit SetAfkTimeout(int value)
     {
         _payload["afk_timeout"] = value;
         return this;
     }
 
     /// <summary>
-    /// The new guild icon. Can be animated if the guild has the <see cref="GuildFeature.AnimatedIcon"/> feature. Can be set to <c>null</c> to remove the icon.
+    /// Set the guild icon.
+    /// <param name="file">A file. Can be animated if the guild has <see cref="GuildFeature.AnimatedIcon"/>,
+    /// or <c>null</c> to remove the icon.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetIcon(DFile? file)
     {
         _payload["icon"] = file?._mimeTypeBase64;
@@ -842,8 +1562,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// Transfer guild ownership (bot must be the owner of the guild).
+    /// Set (transfer) guild ownership. The bot must be the owner of the guild.
+    /// <param name="id">ID of the user to transfer ownership to.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetOwner(ulong id)
     {
         _payload["owner_id"] = id;
@@ -851,8 +1573,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new splash image. Guild must have the <see cref="GuildFeature.InviteSplash"/> feature.  Can be set to <c>null</c> to remove the guild splash image.
+    /// Set the splash image. Guild must have <see cref="GuildFeature.InviteSplash"/>.
+    /// <param name="file">A file, or <c>null</c> to remove the guild splash image.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetSplash(DFile? file)
     {
         _payload["splash"] = file?._mimeTypeBase64;
@@ -860,8 +1584,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new discovery splash image. Guild must have the <see cref="GuildFeature.Discoverable"/> feature. Can be set to <c>null</c> to remove the guild discovery splash image.
+    /// Set the discovery splash image. Guild must have <see cref="GuildFeature.Discoverable"/>.
+    /// <param name="file">A file, or <c>null</c> to remove the guild discovery splash image.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetDiscoverySplash(DFile? file)
     {
         _payload["discovery_splash"] = file?._mimeTypeBase64;
@@ -869,9 +1595,11 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new banner image. Guild must have the <see cref="GuildFeature.Banner"/> feature. Can be animated if the guild has the <see cref="GuildFeature.AnimatedBanner"/> feature.
-    /// Can be set to <c>null</c> to remove the guild banner.
+    /// Set the banner image. Guild must have <see cref="GuildFeature.Banner"/>. Can be animated if the guild has
+    /// <see cref="GuildFeature.AnimatedBanner"/>.
+    /// <param name="file">A file, or <c>null</c> to remove the guild banner.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetBanner(DFile? file)
     {
         _payload["banner"] = file?._mimeTypeBase64;
@@ -879,8 +1607,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new channel where guild notices such as welcome messages and boost events are posted. Can be set to <c>null</c> to disable the system channel.
+    /// Set the channel where guild notices such as welcome messages and boost events are posted.
+    /// <param name="id">Channel ID, or <c>null</c> to disable the system channel.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetSystemChannel(ulong? id)
     {
         _payload["system_channel_id"] = id;
@@ -888,8 +1618,11 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new channel where admins and moderators of Community guilds receive notices from Discord. Only available for guilds with the <see cref="GuildFeature.Community"/> feature.
+    /// Set the channel where admins and moderators of Community guilds receive notices from Discord. Only available for
+    /// guilds with <see cref="GuildFeature.Community"/>.
+    /// <param name="id">Channel ID, or <c>null</c> to disable the public updates channel.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetPublicUpdatesChannel(ulong? id)
     {
         _payload["public_updates_channel_id"] = id;
@@ -897,8 +1630,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new values for the guild system channel.
+    /// Set the values for the guild system channel.
+    /// <param name="flags">System channel flags.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetSystemChannelFlags(IEnumerable<GuildSystemChannelFlags> flags)
     {
         var value = 0;
@@ -909,8 +1644,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new preferred locale of a Community guild used in server discovery and notices from Discord.
+    /// Set the preferred locale of a Community guild used in server discovery and notices from Discord.
+    /// <param name="locale">The locale.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetPreferredLocal(Locale? locale)
     {
         _payload["preferred_locale"] = locale?.GetDescription();
@@ -920,8 +1657,11 @@ public struct GuildEdit
     /// <summary>
     /// Enable/disable Community Features in the guild. Both parameters are required to be set in order for it to be enabled.
     /// To disable, set both parameters to <c>null</c>.
+    /// <param name="rulesChannelId">Rules channel ID, or <c>null</c> to disable it.</param>
+    /// <param name="publicUpdatesChannelId">Public updates channel ID, or <c>null</c> to disable it.</param>
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
+    /// <returns>The edit instance.</returns>
+    /// <exception cref="ArgumentException">Both parameters weren't set.</exception>
     public GuildEdit SetCommunityEnabled(ulong? rulesChannelId, ulong? publicUpdatesChannelId)
     {
         if (rulesChannelId == null && publicUpdatesChannelId == null)
@@ -948,11 +1688,13 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// Enable/disable discovery in the guild.
+    /// Set guild discovery on/off.
+    /// <param name="enabled">Whether discovery is enabled.</param>
     /// </summary>
-    public GuildEdit SetDiscoveryEnabled(bool value)
+    /// <returns>The edit instance.</returns>
+    public GuildEdit SetDiscoveryEnabled(bool enabled)
     {
-        if (value)
+        if (enabled)
             _features.Add(GuildFeature.Discoverable.GetDescription());
         else
             _features.Remove(GuildFeature.Discoverable.GetDescription());
@@ -961,11 +1703,13 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// Pauses all invites/access to the guild.
+    /// Set invites/access to the guild.
+    /// <param name="disabled">Whether invites are disabled (paused).</param>
     /// </summary>
-    public GuildEdit SetInvitesDisabled(bool value)
+    /// <returns>The edit instance.</returns>
+    public GuildEdit SetInvitesDisabled(bool disabled)
     {
-        if (value)
+        if (disabled)
             _features.Add(GuildFeature.InvitesDisabled.GetDescription());
         else
             _features.Remove(GuildFeature.InvitesDisabled.GetDescription());
@@ -974,11 +1718,13 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// Enable/disable alerts for join raids.
+    /// Set alerts for join raids.
+    /// <param name="disabled">Whether raid alerts are disabled.</param>
     /// </summary>
-    public GuildEdit SetRaidAlertsDisabled(bool value)
+    /// <returns>The edit instance.</returns>
+    public GuildEdit SetRaidAlertsDisabled(bool disabled)
     {
-        if (value)
+        if (disabled)
             _features.Add(GuildFeature.RaidAlertsDisabled.GetDescription());
         else
             _features.Remove(GuildFeature.RaidAlertsDisabled.GetDescription());
@@ -987,8 +1733,10 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// The new description for the guild. Only available for guilds with the <see cref="GuildFeature.Community"/> feature.
+    /// Set the description for the guild. Only available for guilds with <see cref="GuildFeature.Community"/>.
+    /// <param name="description">Guild description, or <c>null</c> to remove it.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetDescription(string? description)
     {
         _payload["description"] = description;
@@ -996,17 +1744,21 @@ public struct GuildEdit
     }
 
     /// <summary>
-    /// Enable/disable the guild's boost progress bar.
+    /// Set whether the guild's boost progress bar is enabled.
+    /// <param name="enabled">Whether the guild's boost progress bar is enabled.</param>
     /// </summary>
-    public GuildEdit SetPremiumProgressBarEnabled(bool value)
+    /// <returns>The edit instance.</returns>
+    public GuildEdit SetPremiumProgressBarEnabled(bool enabled)
     {
-        _payload["premium_progress_bar_enabled"] = value;
+        _payload["premium_progress_bar_enabled"] = enabled;
         return this;
     }
 
     /// <summary>
-    /// The channel where admins and moderators of Community guilds receive safety alerts from Discord. Can be set to <c>null</c> to disable the safety channel.
+    /// Set the channel where admins and moderators of Community guilds receive safety alerts from Discord.
+    /// <param name="id">Channel ID, or <c>null</c> to disable the safety channel.</param>
     /// </summary>
+    /// <returns>The edit instance.</returns>
     public GuildEdit SetSafetyAlertsChannel(ulong? id)
     {
         _payload["safety_alerts_channel_id"] = id;
@@ -1014,90 +1766,87 @@ public struct GuildEdit
     }
 }
 
-// TODO
-// /// <summary>
-// /// Represents a <see cref="Guild"/> preview.
-// /// </summary>
-// public class GuildPreview : IEquatable<GuildPreview>
-// {
-//     /// <summary>
-//     /// Guild ID.
-//     /// </summary>
-//     [JsonProperty("id")]
-//     public ulong Id { get; init; }
-//     
-//     /// <summary>
-//     /// Guild name.
-//     /// </summary>
-//     [JsonProperty("name")]
-//     public string Name { get; private set; } = string.Empty;
-//
-//     /// <summary>
-//     /// Guild avatar.
-//     /// </summary>
-//     public Media? Icon { get; init; }
-//
-//     /// <summary>
-//     /// Guild splash.
-//     /// </summary>
-//     public Media? Splash { get; init; }
-//
-//     /// <summary>
-//     /// Guild discovery splash.
-//     /// </summary>
-//     public Media? DiscoverySplash { get; init; }
-//
-//     /// <summary>
-//     /// Custom guild emojis.
-//     /// </summary>
-//     [JsonProperty("emojis")]
-//     public HashSet<Emoji> Emojis { get; private set; } = [];
-//
-//     /// <summary>
-//     /// Enabled guild _features.
-//     /// </summary>
-//     public HashSet<GuildFeature> Features { get; private set; } = [];
-//
-//     /// <summary>
-//     /// Approximate number of members in this guild.
-//     /// </summary>
-//     [JsonProperty("approximate_member_count")]
-//     public int ApproximateMemberCount { get; private set; }
-//
-//     /// <summary>
-//     /// Approximate number of non-offline members in this guild.
-//     /// </summary>
-//     [JsonProperty("approximate_presence_count")]
-//     public int ApproximatePresenceCount { get; private set; }
-//
-//     /// <summary>
-//     /// The description of a guild.
-//     /// </summary>
-//     [JsonProperty("description")]
-//     public string? Description { get; private set; }
-//
-//     /// <summary>
-//     /// Custom guild stickers.
-//     /// </summary>
-//     [JsonProperty("stickers")]
-//     public List<GuildSticker> Stickers { get; private set; } = [];
-//
-//     [JsonConstructor]
-//     internal GuildPreview(ulong id, HashSet<string> features, string? icon, string? splash, string? discovery_splash)
-//     {
-//         Features = Guild.ParseFeatures(features);
-//         if (icon != null)
-//             Icon = new Media(icon, $"/icons/{id}/{icon}");
-//         if (splash != null)
-//             Splash = new Media(splash, $"/splashes/{id}/{splash}");
-//         if (discovery_splash != null)
-//             DiscoverySplash = new Media(discovery_splash, $"/discovery-splashes/{id}/{discovery_splash}");
-//     }
-//     
-//     public override bool Equals(object? other) => other is GuildPreview preview && Equals(preview);
-//     public bool Equals(GuildPreview? other) => Id == other?.Id;
-//     public override int GetHashCode() => Id.GetHashCode();
-// }
+/// <summary>
+/// Represents a <see cref="Guild"/> preview.
+/// </summary>
+public record GuildPreview
+{
+    // DOCS: https://discord.com/developers/docs/resources/guild#guild-preview-object
+    
+    /// <summary>
+    /// Guild ID.
+    /// </summary>
+    public ulong Id { get; }
+    
+    /// <summary>
+    /// Guild name.
+    /// </summary>
+    [JsonProperty("name")]
+    public required string Name { get; init; }
+
+    /// <summary>
+    /// Guild avatar.
+    /// </summary>
+    public Media? Icon { get; }
+
+    /// <summary>
+    /// Guild splash.
+    /// </summary>
+    public Media? Splash { get; }
+
+    /// <summary>
+    /// Guild discovery splash.
+    /// </summary>
+    public Media? DiscoverySplash { get; }
+
+    /// <summary>
+    /// Custom guild emojis.
+    /// </summary>
+    public IReadOnlySet<Emoji> Emojis => _emojis;
+    [JsonProperty("emojis")] private HashSet<Emoji> _emojis = [];
+
+    /// <summary>
+    /// Enabled guild features.
+    /// </summary>
+    public IReadOnlySet<GuildFeature> Features { get; }
+
+    /// <summary>
+    /// Approximate number of members in this guild.
+    /// </summary>
+    [JsonProperty("approximate_member_count")]
+    public int ApproximateMemberCount { get; init; }
+
+    /// <summary>
+    /// Approximate number of non-offline members in this guild.
+    /// </summary>
+    [JsonProperty("approximate_presence_count")]
+    public int ApproximatePresenceCount { get; init; }
+
+    /// <summary>
+    /// The description of a guild.
+    /// </summary>
+    [JsonProperty("description")]
+    public string? Description { get; init; }
+
+    /// <summary>
+    /// Custom guild stickers.
+    /// </summary>
+    public IReadOnlySet<GuildSticker> Stickers => _stickers;
+    [JsonProperty("stickers")] private HashSet<GuildSticker> _stickers = [];
+
+    [JsonConstructor]
+    private GuildPreview(ulong id, HashSet<string> features, string? icon, string? splash, string? discovery_splash)
+    {
+        Id = id;
+        Features = Guild.ParseFeatures(features);
+        if (icon != null)
+            Icon = new Media(icon, $"/icons/{id}/{icon}");
+        if (splash != null)
+            Splash = new Media(splash, $"/splashes/{id}/{splash}");
+        if (discovery_splash != null)
+            DiscoverySplash = new Media(discovery_splash, $"/discovery-splashes/{id}/{discovery_splash}");
+    }
+}
 
 /// <summary>
 /// Represents a guilds scheduled event.
@@ -1134,7 +1883,7 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
     /// Name of the scheduled event.
     /// </summary>
     [JsonProperty("name")]
-    public string Name { get; init; } = string.Empty; 
+    public required string Name { get; init; }
 
     /// <summary>
     /// Description of the scheduled event.
@@ -1211,12 +1960,12 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
     /// <summary>
     /// Your bot instance.
     /// </summary>
-    public Bot? Bot { get; internal set; } // Set via Rest.ListScheduledEventsForGuildAsync().
+    public Bot Bot { get; internal set; }
     
     /// <summary>
     /// Guild the event belongs to.
     /// </summary>
-    public Guild? Guild => Bot?.GetGuild(GuildId);
+    public Guild? Guild => Bot.GetGuild(GuildId);
     
     #endregion
 
@@ -1260,9 +2009,9 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
     {
         return Status switch
         {
-            ScheduledEventStatus.Active => await Bot!._rest.ModifyGuildScheduledEventAsync(GuildId, Id,
+            ScheduledEventStatus.Active => await Bot._rest.ModifyGuildScheduledEventAsync(GuildId, Id,
                 new JSON { { "status", ScheduledEventStatus.Completed } }, reason),
-            ScheduledEventStatus.Scheduled => await Bot!._rest.ModifyGuildScheduledEventAsync(GuildId, Id,
+            ScheduledEventStatus.Scheduled => await Bot._rest.ModifyGuildScheduledEventAsync(GuildId, Id,
                 new JSON { { "status", ScheduledEventStatus.Canceled } }, reason),
             _ => this
         };
@@ -1273,7 +2022,7 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
     /// </summary>
     /// <param name="edit">A scheduled event edit instance.</param>
     /// <param name="reason">The reason for editing the scheduled event. This is displayed in the audit-log.</param>
-    /// <returns></returns>
+    /// <returns>The updated scheduled event.</returns>
     public async Task<ScheduledEvent> EditAsync(ScheduledEventEdit edit, string? reason = null) =>
         await Bot!._rest.ModifyGuildScheduledEventAsync(GuildId, Id, edit._payload, reason);
 
@@ -1282,7 +2031,55 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
     /// </summary>
     public async Task DeleteAsync()
     {
-        await Bot!._rest.DeleteGuildScheduledEventAsync(GuildId, Id);
+        await Bot._rest.DeleteGuildScheduledEventAsync(GuildId, Id);
+    }
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="amount">Amount of users to return (max 100 yielded per loop), or <c>null</c> for all users.</param>
+    /// <param name="before">A user ID. Considers only users before the given ID.</param>
+    /// <param name="after">A user ID. Considers only users after the given ID.</param>
+    /// <returns></returns>
+    /// <exception cref="DiscordException">Only one parameter (<paramref name="before"/> or <paramref name="after"/>)
+    /// can be used, not both.</exception>
+    public async IAsyncEnumerable<List<User>> UsersAsync(int? amount = 100, ulong? before = null, ulong? after = null)
+    {
+        // TODO:
+        // This method has not been fully tested due to not having access to a guild with more than 100 users who
+        // are interested in a scheduled event.
+        
+        if (before is not null && after is not null)
+            throw new DiscordException("Either parameter 'before' or 'after' can be used, not both.");
+        
+        const int indefinite = -1;
+        var remaining = amount ?? indefinite;
+        
+        var hasMore = true;
+        var yielded = new List<User>();
+        
+        do
+        {
+            yielded.Clear();
+            var requestAmount = remaining == indefinite ? 100 : Math.Min(remaining, 100);
+            var users = await Bot._rest.GetGuildScheduledEventUsers(requestAmount, GuildId, Id, before, after);
+            if (users.Count < 100)
+                hasMore = false;
+
+            foreach (var user in users)
+            {
+                yielded.Add(user);
+                if (remaining == indefinite) continue;
+
+                remaining -= 1;
+                if (remaining == 0)
+                    hasMore = false;
+            }
+
+            before = users.LastOrDefault()?.Id ?? 0;
+            after = before;
+            yield return yielded;
+        } while (hasMore);
     }
 }
 
@@ -1298,12 +2095,22 @@ public struct ScheduledEventEdit
     /// </summary>
     public ScheduledEventEdit() { }
     
+    /// <summary>
+    /// Set the event channel ID.
+    /// </summary>
+    /// <param name="id">Channel ID, or <c>null</c> to remove it.</param>
+    /// <returns>The edit instance.</returns>
     public ScheduledEventEdit SetChannelId(ulong? id)
     {
         _payload["channel_id"] = id;
         return this;
     }
 
+    /// <summary>
+    /// Set the event location.
+    /// </summary>
+    /// <param name="location">Location name, or <c>null</c> to remove it.</param>
+    /// <returns>The edit instance.</returns>
     public ScheduledEventEdit SetLocation(string? location)
     {
         if (location != null)
@@ -1313,24 +2120,44 @@ public struct ScheduledEventEdit
         return this;
     }
     
+    /// <summary>
+    /// Set the event name.
+    /// </summary>
+    /// <param name="name">Event name.</param>
+    /// <returns>The edit instance.</returns>
     public ScheduledEventEdit SetName(string name)
     {
         _payload["name"] = name;
         return this;
     }
     
+    /// <summary>
+    /// Set the event start time.
+    /// </summary>
+    /// <param name="startTime">Start time for the event.</param>
+    /// <returns>The edit instance.</returns>
     public ScheduledEventEdit SetScheduledStartTime(DateTime startTime)
     {
-        _payload["scheduled_start_time"] = startTime.ToString("0");
+        _payload["scheduled_start_time"] = startTime.ToUniversalTime();
         return this;
     }
     
+    /// <summary>
+    /// Set the event end time.
+    /// </summary>
+    /// <param name="endTime">End time for the event.</param>
+    /// <returns>The edit instance.</returns>
     public ScheduledEventEdit SetScheduledEndTime(DateTime endTime)
     {
-        _payload["scheduled_end_time"] = endTime.ToString("0");
+        _payload["scheduled_end_time"] = endTime.ToUniversalTime();
         return this;
     }
     
+    /// <summary>
+    /// Set the event description.
+    /// </summary>
+    /// <param name="description">Event description, or <c>null</c> to remove it.</param>
+    /// <returns>The edit instance.</returns>
     public ScheduledEventEdit SetDescription(string? description)
     {
         _payload["description"] = description;
@@ -1353,12 +2180,26 @@ public struct ScheduledEventEdit
         return this;
     }
     
-    public ScheduledEventEdit SetImage(DFile image)
+    /// <summary>
+    /// Set the event image.
+    /// </summary>
+    /// <param name="image">Event image, or <c>null</c> to remove it.</param>
+    /// <returns>The edit instance.</returns>
+    public ScheduledEventEdit SetImage(DFile? image)
     {
-        _payload["image"] = image._mimeTypeBase64;
+        // NOTE:
+        // Discord does not list this as a nullable type, only as optional. But it makes no sense that you could set
+        // an image but not remove it. I tested setting it as null, which successfully removed the image, so I'm not sure
+        // why its documented that way.
+        _payload["image"] = image?._mimeTypeBase64;
         return this;
     }
     
+    /// <summary>
+    /// Set the recurrence rule.
+    /// </summary>
+    /// <param name="rule">The recurrence rule, or <c>null</c> to remove it.</param>
+    /// <returns>The edit instance.</returns>
     public ScheduledEventEdit SetRecurrenceRule(RecurrenceRule? rule)
     {
         _payload["recurrence_rule"] = rule;
@@ -1525,6 +2366,8 @@ public record RecurrenceRuleFrequencyNWeekday
     /// </summary>
     [JsonProperty("day")]
     public RecurrenceRuleFrequencyWeekday Day { get; init; }
+    
+    private RecurrenceRuleFrequencyNWeekday() { }
 }
 
 /// <summary>
@@ -1557,6 +2400,8 @@ public record Incidents
     /// </summary>
     [JsonProperty("raid_detected_at")]
     public DateTime? RaidDetectedAt{ get; init; }
+    
+    private Incidents() { }
 }
 
 /// <summary>
@@ -1577,6 +2422,8 @@ public record WelcomeScreen
     /// </summary>
     [JsonProperty("welcome_channels")]
     public required IReadOnlyCollection<WelcomeScreenChannel> Channels { get; init; }
+    
+    private WelcomeScreen() { }
 }
 
 /// <summary>
@@ -1596,7 +2443,7 @@ public record WelcomeScreenChannel
     /// Channel description.
     /// </summary>
     [JsonProperty("description")]
-    public string Description { get; init; } = string.Empty;
+    public required string Description { get; init; }
     
     /// <summary>
     /// Emoji ID, if the emoji is custom.
@@ -1609,6 +2456,8 @@ public record WelcomeScreenChannel
     /// </summary>
     [JsonProperty("emoji_name")]
     public string? EmojiName { get; init; }
+    
+    private WelcomeScreenChannel() { }
 }
 
 /// <summary>
@@ -1629,7 +2478,8 @@ public enum ScheduledEventStatus
 /// </summary>    
 public enum ScheduledEventEntityType
 {
-    // https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object-guild-scheduled-event-entity-types
+    // DOCS: https://discord.com/developers/docs/resources/guild-scheduled-event#guild-scheduled-event-object-guild-scheduled-event-entity-types
+    
     StageInstance = 1,
     Voice,
     External

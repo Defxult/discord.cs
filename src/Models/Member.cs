@@ -109,7 +109,7 @@ public class Member : IEquatable<Member>
             
             // Avatar decorations are a little different. Usually the Media class would automatically assign the file
             // type (.png or .gif) based on whether the hash starts with "a_". But with avatar decorations they will
-            // always be .png
+            // always be .png (or .apng under the Discord hood)
             var media = new Media(hash, $"/avatar-decoration-presets/{hash}");
             media.Url = media.Url.Replace(".gif", ".png");
             return media;
@@ -182,7 +182,7 @@ public class Member : IEquatable<Member>
     /// Add roles to the member.
     /// </summary>
     /// <param name="roles">Roles to add.</param>
-    /// <param name="reason">The reason for adding roles. This is displayed in the audit-log.</param>
+    /// <param name="reason">The reason for adding the roles. This is displayed in the audit-log.</param>
     /// <remarks>Requires <see cref="Permission.ManageRoles"/>.</remarks>
     public async Task AddRolesAsync(IEnumerable<Role> roles, string? reason = null)
     {
@@ -191,33 +191,16 @@ public class Member : IEquatable<Member>
     }
     
     /// <summary>
-    /// Remove roles from the member.
+    /// Remove the roles from the member.
     /// </summary>
     /// <param name="roles">Roles to remove.</param>
-    /// <param name="reason">The reason for removing roles. This is displayed in the audit-log.</param>
+    /// <param name="reason">The reason for removing the roles. This is displayed in the audit-log.</param>
     /// <remarks>Requires <see cref="Permission.ManageRoles"/>.</remarks>
     public async Task RemoveRolesAsync(IEnumerable<Role> roles, string? reason = null)
     {
         foreach (var role in roles)
             await Bot._rest.RemoveGuildMemberRoleAsync(GuildId, Id, role.Id, reason);
     }
-
-    /// <summary>
-    /// Removes member from the guild.
-    /// </summary>
-    /// <param name="reason">The reason for removing member. This is displayed in the audit-log.</param>
-    /// <remarks>Requires <see cref="Permission.KickMembers"/>.</remarks>
-    public async Task KickAsync(string? reason = null)
-    {
-        await Bot._rest.RemoveGuildMemberAsync(GuildId, Id, reason);
-    }
-
-    /// <summary>
-    /// Create a direct message channel.
-    /// </summary>
-    /// <returns>A channel that's capable of sending the user a private message.</returns>
-    // public async Task<DmChannel> CreateDmAsync() =>
-    //     await Guild._rest.CreatDmAsync(Id!.Value);
 
     #endregion
 

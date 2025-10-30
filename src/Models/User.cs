@@ -102,13 +102,30 @@ public class User : IEquatable<User>
     public bool Equals(User? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
 
-    #region Public
+    #region PUBLIC
     
     /// <summary>
     /// Returns their username. If the user is a bot, its discriminator is included.
     /// </summary>
     public override string ToString() => IsBot ? $"{Name}#{Discriminator}" : Name;
     
+    #endregion
+
+    #region PRIVATE
+
+    internal static StatusType ParseStatus(string status)
+    {
+        return status switch
+        {
+            "online" => StatusType.Online,
+            "dnd" => StatusType.Dnd,
+            "offline" => StatusType.Offline,
+            "idle" => StatusType.Idle,
+            "invisible" => StatusType.Invisible,
+            _ => StatusType.Offline
+        };
+    }
+
     #endregion
 }
 

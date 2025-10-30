@@ -57,11 +57,23 @@ public class Message : IEquatable<Message>
     /// </summary>
     [JsonProperty("mention_everyone")]
     public bool EveryoneMentioned { get; init; }
-    
+
     /// <summary>
     /// Roles specifically mentioned in this message.
     /// </summary>
-    //public IReadOnlyList<Role> MentionedRoles => _roleMentions; TODO
+    public IReadOnlyList<Role> MentionedRoles
+    {
+        get
+        {
+            if (GuildId is not { } guildId || Bot.GetGuild(guildId) is not { } guild) return [];
+            var linq = 
+                from rId in _mentionedRoleIds
+                let role = guild.GetRole(rId)
+                where role is not null
+                select role;
+            return linq.ToList();
+        }
+    }
     [JsonProperty("mention_roles")] private List<ulong> _mentionedRoleIds = [];
     
     #region These fields are specific to the MESSAGE_CREATE/UPDATE events
@@ -82,8 +94,8 @@ public class Message : IEquatable<Message>
     /// <summary>
     /// Users specifically mentioned in the message.
     /// </summary>
-    public IReadOnlyCollection<User> MentionedUsers => _mentions;
-    [JsonProperty("mentions")] private List<User> _mentions = [];
+    [JsonProperty("mentions")]
+    public required IReadOnlyCollection<User> MentionedUsers { get; init; }
 
     #endregion
 
@@ -92,12 +104,12 @@ public class Message : IEquatable<Message>
     /// <summary>
     /// Your bot instance.
     /// </summary>
-    public Bot? Bot { get; internal set; }
+    public Bot Bot { get; internal set; }
 
     /// <summary>
     /// Guild this message belongs to. Can be <c>null</c> if it's ephemeral or direct message.
     /// </summary>
-    public Guild? Guild => GuildId.HasValue ? Bot?.GetGuild(GuildId.Value) : null; 
+    public Guild? Guild => GuildId.HasValue ? Bot.GetGuild(GuildId.Value) : null; 
     
     internal DateTime _expiration;
 

@@ -31,7 +31,7 @@ public class Bot
     /// All messages in every guild that the bot has permissions to see.
     /// </summary>
     public IReadOnlySet<Message> Messages => _cachedMessages;
-    private readonly HashSet<Message> _cachedMessages = [];
+    internal readonly HashSet<Message> _cachedMessages = [];
     private Timer _messageCacheTimer;
     
     /// <summary>
@@ -94,6 +94,15 @@ public class Bot
         await _rest.GetGuildAsync(id);
     
     /// <summary>
+    /// Previews a guild.
+    /// </summary>
+    /// <param name="id">Guild ID.</param>
+    /// <returns>A guild preview.</returns>
+    /// <remarks>If the bot is not in the guild, then the guild must have <see cref="GuildFeature.Discoverable"/>.</remarks>
+    public async Task<GuildPreview> PreviewGuildAsync(ulong id) =>
+        await _rest.GetGuildPreviewAsync(id);
+    
+    /// <summary>
     /// Retrieves a guild from the cache.
     /// </summary>
     /// <param name="id">Guild ID.</param>
@@ -136,6 +145,16 @@ public class Bot
         message._expiration = DateTime.UtcNow.Add(CacheManager.Messages.Item2);
         return message;
     }
+    
+    /// <summary>
+    /// Request an invite.
+    /// </summary>
+    /// <param name="code">Invite code.</param>
+    /// <param name="withCounts">Whether the invite should contain approximate member counts.</param>
+    /// <param name="scheduledEvent">Guild scheduled event to include with the invite.</param>
+    /// <returns>The invite matching the given code.</returns>
+    public async Task<Invite> RequestInviteAsync(string code, bool withCounts = true, ScheduledEvent? scheduledEvent = null) =>
+        await _rest.GetInviteAsync(code, withCounts, scheduledEvent?.Id);
     
     #endregion
     
@@ -193,44 +212,56 @@ public class Bot
 }
 
 /// <summary>
-/// Represents the status type.
+/// Represents a users status type.
 /// </summary>
 public enum StatusType
 {
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#update-presence-status-types
+    
     /// <summary>
-    /// Green status icon.
+    /// Online (green status icon).
     /// </summary>
-    [Description("online")]
     Online,
     
     /// <summary>
-    /// Red status icon.
+    /// Do Not Disturb (red status icon).
     /// </summary>
-    [Description("dnd")]
-    DoNotDisturb,
+    Dnd,
     
     /// <summary>
-    /// Yellow status icon.
+    /// Idle (yellow status icon).
     /// </summary>
-    [Description("idle")]
-    Idle
+    Idle,
     
-    // NOTE: Bot users can't use this type
-    // Invisible
+    /// <summary>
+    /// Invisible.
+    /// </summary>
+    Invisible,
+    
+    /// <summary>
+    /// Offline.
+    /// </summary>
+    Offline
 }
 
 /// <summary>
 /// Represents an activity status such as "Listening to <b>Spotify</b>" or "Playing <b>Call of Duty</b>."
 /// </summary>
-/// <param name="Type">Activity type</param>
-/// <param name="Name">Activity name</param>
-public record Activity(ActivityType Type, string Name)
+public record Activity
 {
-    [JsonProperty("type")]
-    public ActivityType Type = Type;
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object
     
+    /// <summary>
+    /// Activity's name.
+    /// </summary>
     [JsonProperty("name")]
-    public string Name = Name;
+    public required string Name { get; init; }
+    
+    /// <summary>
+    /// Activity type.
+    /// </summary>
+    [JsonProperty("type")]
+    public ActivityType Type { get; init; }
 }
 
 /// <summary>
@@ -238,6 +269,8 @@ public record Activity(ActivityType Type, string Name)
 /// </summary>
 public enum ActivityType
 {
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object-activity-types
+    
     /// <summary>
     /// "Playing <b>Rocket League</b>"
     /// </summary>
