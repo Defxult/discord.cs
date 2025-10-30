@@ -37,24 +37,51 @@ public record Shard
     }
 }
 
+/// <summary>
+/// Represents a client that handles all Discord gateway traffic.
+/// </summary>
 public sealed class DiscordGatewayClient
 {
-    #region Events
-    
-    # region Messages
+    #region EVENTS
+
+    #region GUILD
+
+    /// <summary>
+    /// Dispatched in three different scenarios:
+    /// <list type="bullet">
+    ///     <item>When the bot is initially connecting, lazily loading all available guilds. Guilds that are unavailable
+    ///     due to an outage will send a <see cref="OnGuildDelete"/> event.
+    ///     </item>
+    ///     <item>When a guild becomes available again to the bot.</item>
+    ///     <item>When the bot joins a new guild.</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>Requires <see cref="Intents.Guilds"/>.</remarks>
+    public event EventHandler<Guild>? OnGuildCreate;
     
     /// <summary>
-    /// Dispatched when a message is sent. Requires <see cref="Intents.GuildMessages"/> and or <see cref="Intents.DmMessages"/>.
+    /// Dispatched when a guild becomes or was already unavailable due to an outage, or when the bot leaves or is removed
+    /// from a guild. If <c>unavailable</c> is <c>null</c>, the bot was removed from the guild.
     /// </summary>
+    public event EventHandler<(ulong id, bool? unavailable)>? OnGuildDelete;
+
+    #endregion
+    
+    # region MESSAGES
+    
+    /// <summary>
+    /// Dispatched when a message is sent.
+    /// </summary>
+    /// <remarks>Requires <see cref="Intents.GuildMessages"/> and or <see cref="Intents.DmMessages"/>.</remarks>
     public event EventHandler<Message>? OnMessageCreate;
     
     #endregion
     
     #endregion
     
-    internal string? _sessionId;
-    internal string? _resumeGatewayUrl;
-    internal const string UriParameters = "/?v=10&encoding=json";
+    private string? _sessionId;
+    private string? _resumeGatewayUrl;
+    private const string UriParameters = "/?v=10&encoding=json";
     internal ClientWebSocket _ws;
     internal bool _userTerminated;
     
@@ -68,6 +95,7 @@ public sealed class DiscordGatewayClient
     private int _heartbeatInterval;
     private bool _heartbeatResponse;
     private bool _identifyRequired;
+    private bool _reconnectRequested;
 
     internal DiscordGatewayClient(Bot bot, Intents intents)
     {
@@ -80,31 +108,18 @@ public sealed class DiscordGatewayClient
         _cts = new CancellationTokenSource();
         _ws = new ClientWebSocket();
         _userTerminated = false;
+        _reconnectRequested = false;
     }
 
-    // Gracefully closes the WebSocket connection and sets a new WebSocket object and CancellationTokenSource.
+    // Closes the WebSocket connection and sets a new WebSocket object and CancellationTokenSource. Prior to reaching
+    // this the connection should have already been gracefully closed.
     private async Task RefreshWebSocket()
     {
-        try
-        {
-            if (_ws.State == WebSocketState.Open)
-            {
-                await _ws.CloseAsync(WebSocketCloseStatus.Empty, string.Empty, _cts.Token);
-                Dev.Log("[GW] Client WebSocket connection manually closed");
-            }
-        }
-        catch (Exception e)
-        {
-            Dev.Log($"[ERROR, RefreshWebSocket] {e.Message}");
-        }
-        finally
-        {
-            await _cts.CancelAsync();
-            _ws.Dispose();
-            _ws = new ClientWebSocket();
-            _ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(10);
-            _cts = new CancellationTokenSource();
-        }
+        if (await AttemptGracefulCloseAsync())
+            Dev.Log("[GW] Connection manually closed gracefully due to current Open state");
+        _ws = new ClientWebSocket();
+        _ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(10);
+        _cts = new CancellationTokenSource();
     }
 
     // Connects to the Discord Gateway and starts processing events.
@@ -120,7 +135,6 @@ public sealed class DiscordGatewayClient
         else
         {
             string wss = await _bot._rest.GetGatewayAsync();
-            //await _bot._rest.GetGatewayBotAsync();
             Dev.Log("[GW] Connecting with IDENTIFY");
             await _ws.ConnectAsync(new Uri(wss + UriParameters), _cts.Token);
         }
@@ -134,17 +148,6 @@ public sealed class DiscordGatewayClient
         }, _cts.Token);;
     }
 
-    // Used when the end user wants to disconnect from gateway, otherwise not used internally
-    // internal async Task UserDisconnectAsync(bool instant)
-    // {
-    //     ResetCoreValues();
-    //     await _ws.CloseAsync(
-    //         instant ? WebSocketCloseStatus.NormalClosure : WebSocketCloseStatus.Empty,
-    //         string.Empty, 
-    //         _cts.Token);
-    //     await _cts.CompleteAsync();
-    // }
-
     // Resets values associated with the gateway that would indicate a new connection.
     private void ResetCoreValues()
     {
@@ -152,15 +155,17 @@ public sealed class DiscordGatewayClient
         _resumeGatewayUrl = null;
         _lastSequence = null;
         _identifyRequired = true;
+        _reconnectRequested = false;
     }
 
     // Keeps the connection alive with Discords required heartbeats.
     private async Task HeartbeatLoopAsync()
     {
         Dev.Log("[GW] Heartbeat loop started");
-        while (!_cts.IsCancellationRequested)
+        while (_ws.State == WebSocketState.Open)
         {
             await Task.Delay(_heartbeatInterval, _cts.Token);
+            // After the delay, check if the connection is still open.
             if (_ws.State == WebSocketState.Open)
                 await SendHeartbeatAsync();
             else
@@ -178,13 +183,21 @@ public sealed class DiscordGatewayClient
         while (_ws.State == WebSocketState.Open)
         {
             GatewayPayload? payload = await ConvertPayloadAsync();
-            if (payload is not null) // AKA isn't closed
+            if (payload is not null) // AKA isn't closed and no error occurred.
                 await HandleDiscordEventAsync(payload);
             else
             {
-                // According to Discord, sometimes the connection can close with no close code.
+                Dev.Log("[GW] ConvertPayloadAsync received null response due to close or error");
+                if (_reconnectRequested)
+                {
+                    _reconnectRequested = false;
+                    return;
+                }
+                // According to Discord, sometimes the connection can close with no close code. If there is a close code,
+                // set it, otherwise leave it as -1 to symbolize no close code.
                 if (_ws.CloseStatus is { } status)
                     closeCode = (int)status;
+                break;
             }
         }
         
@@ -307,8 +320,11 @@ public sealed class DiscordGatewayClient
             do
             {
                 result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), _cts.Token);
-                if (result.MessageType == WebSocketMessageType.Close)
+                if (result.MessageType == WebSocketMessageType.Close || result.CloseStatus is not null)
+                {
+                    Dev.Log($"[GW] MessageType={result.MessageType}, CloseStatus={result.CloseStatus}");
                     return null;
+                }
                 builder.Write(new ReadOnlySpan<byte>(buffer, 0, result.Count));
             } while (!result.EndOfMessage);
 
@@ -319,9 +335,18 @@ public sealed class DiscordGatewayClient
         }
         catch (Exception ex)
         {
-            Dev.Log($"[GW ERROR] - {ex.Message}");
+            Dev.Log($"[GW ERROR, {ex}] - {ex.Message}");
+            await AttemptGracefulCloseAsync();
             return null;
         }
+    }
+
+    private async Task<bool> AttemptGracefulCloseAsync()
+    {
+        if (_ws.State != WebSocketState.Open) return false;
+        await _ws.CloseAsync(WebSocketCloseStatus.Empty, string.Empty, _cts.Token);
+        await _cts.CancelAsync();
+        return true;
     }
     
     // Sends a Heartbeat payload to the gateway.
@@ -353,6 +378,7 @@ public sealed class DiscordGatewayClient
             if (!_heartbeatResponse)
             {
                 Dev.Log($"[GW] Heartbeat timed out ({timeout.Seconds}s) - resuming session");
+                await AttemptGracefulCloseAsync();
                 await ConnectAsync(true);
             }
         }
@@ -384,25 +410,25 @@ public sealed class DiscordGatewayClient
                 switch (payload.T)
                 {
                     case "READY":
-                        _sessionId = GetElementValue(payload.D!.Value, "session_id").ToString();
-                        _resumeGatewayUrl = GetElementValue(payload.D!.Value, "resume_gateway_url").ToString();
+                        _sessionId = GetElementValue(D(), "session_id").ToString();
+                        _resumeGatewayUrl = GetElementValue(D(), "resume_gateway_url").ToString();
                         Dev.Log($"[GW] READY received, session ID: {_sessionId} - Resume URL: {_resumeGatewayUrl}");
                         
-                        var userElement = GetElementValue(payload.D!.Value, "user");
+                        var userElement = GetElementValue(D(), "user");
                         _bot.User = DeserializeWithNewtonsoft<User>(userElement);
                         break;
                     case "RESUMED":
                         Dev.Log("[GW] Successfully resumed");
                         break;
                     case "MESSAGE_CREATE":
-                        var messageCreated = DeserializeWithNewtonsoft<Message>(payload.D!.Value);
+                        var messageCreated = DeserializeWithNewtonsoft<Message>(D());
                         messageCreated.Bot = _bot;
                         
                         _bot.CacheMessage(messageCreated);
                         OnMessageCreate?.Invoke(this, messageCreated);
                         break;
                     case "GUILD_CREATE":
-                        var guildCreatedId = Convert.ToUInt64(GetElementValue(payload.D!.Value, "id").ToString());
+                        var guildCreatedId = Convert.ToUInt64(GetElementValue(D(), "id").ToString());
 
                         // If the guild is already in cache, this is most likely being dispatched again due to it
                         // recovering from an outage. The amount of information inside a guild can be significant,
@@ -410,20 +436,34 @@ public sealed class DiscordGatewayClient
                         // most likely get rid of a lot of information. To avoid this, see if the guild is already in cache
                         // and if so, update it.
                         if (_bot.GetGuild(guildCreatedId) is { } gc)
-                            gc.Update(payload.D.Value);
+                        {
+                            gc.Update(D());
+                            OnGuildCreate?.Invoke(this, gc);
+                        }
                         else
                         {
-                            var guildCreated = DeserializeWithNewtonsoft<Guild>(payload.D!.Value);
+                            var guildCreated = DeserializeWithNewtonsoft<Guild>(D());
                             guildCreated.Bot = _bot;
                             guildCreated.CacheMembersFromCreate(payload, _bot.User!.Id);
                             _bot._rest.SetEmojiValues(guildCreated._emojis, guildCreatedId);
                             _bot._rest.SetRoleValues(guildCreated._roles, guildCreatedId);
                             _bot._guilds.Add(guildCreated);
+                            OnGuildCreate?.Invoke(this, guildCreated);
                         }
                         break;
+                    case "GUILD_UPDATE":
+                        break;
+                    case "GUILD_DELETE":
+                        var gdId = GetElementValue(D(), "id").GetUInt64();
+                        var gduElement = GetElementValue(D(), "unavailable");
+                        bool? gdUnavailable = gduElement.ValueKind == JsonValueKind.Null ? null : gduElement.GetBoolean();
+                        _bot._guilds.RemoveWhere(g => g.Id == gdId);
+                        _bot._cachedMessages.RemoveWhere(m => m.GuildId == gdId);
+                        OnGuildDelete?.Invoke(this, (gdId, gdUnavailable));
+                        break;
                     case "GUILD_MEMBERS_CHUNK":
-                        var chunkedGuildId = Convert.ToUInt64(GetElementValue(payload.D!.Value, "guild_id").ToString());
-                        var chunkedMembers = GetElementValue(payload.D!.Value, "members");
+                        var chunkedGuildId = Convert.ToUInt64(GetElementValue(D(), "guild_id").ToString());
+                        var chunkedMembers = GetElementValue(D(), "members");
                         var convertedChunkedMembers = DeserializeWithNewtonsoft<List<Member>>(chunkedMembers);
                         _bot._rest.SetMemberValues(convertedChunkedMembers, chunkedGuildId);
                         if (_bot.GetGuild(chunkedGuildId) is { } chunkedGuild)
@@ -438,12 +478,13 @@ public sealed class DiscordGatewayClient
                 break;
             
             case 7: // Reconnect
-                Dev.Log("[GW] RECONNECT request received - resuming session");
+                Dev.Log("[GW] RECONNECT request received - closing/resuming session");
+                _reconnectRequested = true;
                 await ConnectAsync(true);
                 break;
 
             case 9: // Invalid Session
-                var resumable = GetElementValue(payload.D!.Value, "d").GetBoolean();
+                var resumable = GetElementValue(D(), "d").GetBoolean();
                 Dev.Log($"[GW] INVALID SESSION received, resumable: {resumable}");
                 if (resumable)
                     await ConnectAsync(true);
@@ -457,7 +498,7 @@ public sealed class DiscordGatewayClient
             case 10: // Hello
                 if (_identifyRequired)
                 {
-                    _heartbeatInterval = GetElementValue(payload.D!.Value, "heartbeat_interval") .GetInt32();
+                    _heartbeatInterval = GetElementValue(D(), "heartbeat_interval") .GetInt32();
                     Dev.Log($"[GW] HELLO received, heartbeat interval set ({_heartbeatInterval}ms)");
                     await SendIdentifyAsync();
                     _identifyRequired = false;
@@ -475,6 +516,10 @@ public sealed class DiscordGatewayClient
                 Dev.Log($"Unhandled opcode: {payload.Op}");
                 break;
         }
+
+        return;
+
+        JsonElement D() => payload.D!.Value;
     }
 }
 
