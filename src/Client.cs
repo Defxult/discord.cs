@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Net.WebSockets;
 using Discord.Net;
 using Discord.Models;
+using Discord.Utility;
 using Newtonsoft.Json;
 
 namespace Discord;
@@ -20,6 +21,12 @@ public class Bot
     /// The bot user object.
     /// </summary>
     public User? User { get; internal set; }
+    
+    /// <summary>
+    /// All users in every guild the bot has access to.
+    /// </summary>
+    /// <remarks>This is affected by your <see cref="CacheManager"/> settings.</remarks>
+    public IReadOnlySet<User> Users => _guilds.SelectMany(g => g.Members.Select(m => m.User)).ToHashSet();
     
     /// <summary>
     /// All guilds the bot is currently in.
@@ -156,6 +163,64 @@ public class Bot
     public async Task<Invite> RequestInviteAsync(string code, bool withCounts = true, ScheduledEvent? scheduledEvent = null) =>
         await _rest.GetInviteAsync(code, withCounts, scheduledEvent?.Id);
     
+    /// <summary>
+    /// Updates the bot's presence.
+    /// </summary>
+    /// <param name="type">Status to change to. Bot users can't use <see cref="StatusType.Invisible"/> or
+    /// <see cref="StatusType.Offline"/>.
+    /// </param>
+    /// <param name="activity">The activity to display.</param>
+    public async Task UpdatePresenceAsync(StatusType type, Activity? activity = null)
+    {
+        var ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        object? sinceValue = type == StatusType.Idle ? ms : null;
+        if (activity is not null)
+            activity._createdAt = ms;
+        var dValue = new
+        {
+            since = sinceValue,
+            activities = activity is null ? [] : new[] { activity },
+            status = type.GetDescription(),
+            afk = type == StatusType.Idle
+        };
+        var payload = new
+        {
+            op = Opcode.PresenceUpdate,
+            d = dValue
+        };
+        await _gateway.SendJsonAsync(payload);
+    }
+
+    /// <summary>
+    /// All default soundboard sounds.
+    /// </summary>
+    public async Task<ICollection<SoundboardSound>> DefaultSoundboardsAsync() =>
+        await _rest.ListDefaultSoundboardSoundsAsync();
+    
+    /// <summary>
+    /// Start the bot and connect to Discord.
+    /// </summary>
+    public async Task ConnectAsync()
+    {
+        if (_gateway._ws.State != WebSocketState.Open)
+            await _gateway.ConnectAsync(false);
+    }
+
+    /// <summary>
+    /// Disconnect from the gateway.
+    /// </summary>
+    /// <param name="instant">Whether to instantly show the bot as offline. If <c>false</c>, the bot will be shown as
+    /// offline after about a minute.
+    /// </param>
+    public async Task DisconnectAsync(bool instant = true)
+    {
+        if (_gateway._ws.State == WebSocketState.Open)
+        {
+            _gateway._userTerminated = true;
+            await _gateway.DisconnectAsync(instant);
+        }
+    }
+    
     #endregion
     
     #region PRIVATE
@@ -174,41 +239,6 @@ public class Bot
     }
     
     #endregion
-    
-    /// <summary>
-    /// Updates the bot's presence.
-    /// </summary>
-    /// <param name="status">Status to change to.</param>
-    /// <param name="activity">The activity to display.</param>
-    // public async Task UpdatePresenceAsync(StatusType status, Activity? activity)
-    // {
-    //     object? sinceValue = status == StatusType.Idle ? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() : null;
-    //     var activityList = new List<Activity>();
-    //     if (activity is not null)
-    //         activityList.Add(activity);
-    //     var dValue = new
-    //     {
-    //         status = status.GetDescription(),
-    //         afk = status == StatusType.DoNotDisturb,
-    //         since = sinceValue,
-    //         activities = activityList
-    //     };
-    //     var payload = new
-    //     {
-    //         op = Opcode.PresenceUpdate,
-    //         d = dValue
-    //     };
-    //     await _gateway.SendPayloadAsync(payload);
-    // }
-
-    /// <summary>
-    /// Start the bot and connect to Discord.
-    /// </summary>
-    public async Task RunAsync()
-    {
-        if (_gateway._ws.State != WebSocketState.Open)
-            await _gateway.ConnectAsync(false);
-    }
 }
 
 /// <summary>
@@ -221,33 +251,40 @@ public enum StatusType
     /// <summary>
     /// Online (green status icon).
     /// </summary>
+    [Description("online")]
     Online,
     
     /// <summary>
     /// Do Not Disturb (red status icon).
     /// </summary>
+    [Description("dnd")]
     Dnd,
     
     /// <summary>
     /// Idle (yellow status icon).
     /// </summary>
+    [Description("idle")]
     Idle,
     
     /// <summary>
     /// Invisible.
     /// </summary>
+    [Description("invisible")]
     Invisible,
     
     /// <summary>
     /// Offline.
     /// </summary>
+    [Description("offline")]
     Offline
 }
 
 /// <summary>
 /// Represents an activity status such as "Listening to <b>Spotify</b>" or "Playing <b>Call of Duty</b>."
 /// </summary>
-public record Activity
+/// <param name="Name">Activity's name.</param>
+/// <param name="Type">Activity type.</param>
+public record Activity(ActivityType Type, string Name)
 {
     // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object
     
@@ -255,17 +292,301 @@ public record Activity
     /// Activity's name.
     /// </summary>
     [JsonProperty("name")]
-    public required string Name { get; init; }
-    
+    public string Name { get; set; } = Name;
+
     /// <summary>
     /// Activity type.
     /// </summary>
     [JsonProperty("type")]
-    public ActivityType Type { get; init; }
+    public ActivityType Type { get; set; } = Type;
+    
+    /// <summary>
+    /// Stream URL.
+    /// </summary>
+    [JsonProperty("url", NullValueHandling = NullValueHandling.Ignore)]
+    public string? Url { get; init; }
+
+    /// <summary>
+    /// Unix timestamp (in milliseconds) of when the activity was added to the user's session.
+    /// </summary>
+    [JsonIgnore] public DateTime CreatedAt => DateTimeOffset.FromUnixTimeMilliseconds(_createdAt).UtcDateTime;
+    [JsonProperty("created_at")] public long _createdAt;
+    
+    /// <summary>
+    /// Timestamps for start and/or end of the game.
+    /// </summary>
+    [JsonProperty("timestamps", NullValueHandling = NullValueHandling.Ignore)]
+    public ActivityTimestamp? Timestamps { get; init; }
+    
+    /// <summary>
+    /// Application ID for the game.
+    /// </summary>
+    [JsonProperty("application_id", NullValueHandling = NullValueHandling.Ignore)]
+    public ulong? ApplicationId { get; init; }
+    
+    /// <summary>
+    /// Status display type; controls which field is displayed in the user's status text in the member list.
+    /// </summary>
+    [JsonProperty("status_display_type", NullValueHandling = NullValueHandling.Ignore)]
+    public StatusDisplayType? DisplayType { get; init; }
+    
+    /// <summary>
+    /// What the player is currently doing.
+    /// </summary>
+    [JsonProperty("details", NullValueHandling = NullValueHandling.Ignore)]
+    public string? Details { get; init; }
+    
+    /// <summary>
+    /// URL that is linked when clicking on the details text.
+    /// </summary>
+    [JsonProperty("details_url", NullValueHandling = NullValueHandling.Ignore)]
+    public string? DetailsUrl { get; init; }
+    
+    /// <summary>
+    /// User's current party status, or text used for a custom status.
+    /// </summary>
+    [JsonProperty("state", NullValueHandling = NullValueHandling.Ignore)]
+    public string? State { get; init; }
+    
+    /// <summary>
+    /// URL that is linked when clicking on the state text.
+    /// </summary>
+    [JsonProperty("state_url", NullValueHandling = NullValueHandling.Ignore)]
+    public string? StateUrl { get; init; }
+    
+    /// <summary>
+    /// Emoji used for a custom status.
+    /// </summary>
+    [JsonProperty("emoji", NullValueHandling = NullValueHandling.Ignore)]
+    public PartialEmoji? Emoji { get; init; }
+    
+    /// <summary>
+    /// Information for the current party of the player.
+    /// </summary>
+    [JsonProperty("party", NullValueHandling = NullValueHandling.Ignore)]
+    public ActivityParty? Party { get; init; }
+    
+    /// <summary>
+    /// Images for the presence and their hover texts.
+    /// </summary>
+    [JsonProperty("assets", NullValueHandling = NullValueHandling.Ignore)]
+    public ActivityAsset? Asset { get; init; }
+    
+    /// <summary>
+    /// Secrets for Rich Presence joining and spectating.
+    /// </summary>
+    [JsonProperty("secrets", NullValueHandling = NullValueHandling.Ignore)]
+    public ActivitySecret? Secret { get; init; }
+    
+    /// <summary>
+    /// Whether the activity is an instanced game session.
+    /// </summary>
+    [JsonProperty("instance", NullValueHandling = NullValueHandling.Ignore)]
+    public bool? Instance { get; init; }
+    
+    /// <summary>
+    /// Activity flags, describes what the payload includes.
+    /// </summary>
+    [JsonIgnore] IReadOnlyCollection<ActivityFlags>? Flags => _flags is not null ? Util.FromBitfield<ActivityFlags>(_flags.Value) : null;
+    [JsonProperty("flags", NullValueHandling = NullValueHandling.Ignore)] private int? _flags;
+    
+    /// <summary>
+    /// Custom buttons shown in the Rich Presence (max 2).
+    /// </summary>
+    [JsonProperty("buttons", NullValueHandling = NullValueHandling.Ignore)]
+    public IReadOnlyCollection<ActivityButton>? Buttons { get; init; }
 }
 
 /// <summary>
-/// Represents an activity type.
+/// Represents an <see cref="Activity"/> button.
+/// </summary>
+public record ActivityButton
+{
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object-activity-buttons
+    
+    /// <summary>
+    /// Text shown on the button (1-32 characters).
+    /// </summary>
+    [JsonProperty("label")]
+    public required string Label { get; init; }
+    
+    /// <summary>
+    /// URL opened when clicking the button (1-512 characters).
+    /// </summary>
+    [JsonProperty("url")]
+    public required string Url { get; init; }
+    
+    private ActivityButton() { }
+}
+
+/// <summary>
+/// Represents am <see cref="Activity"/>s flags.
+/// </summary>
+[Flags]
+public enum ActivityFlags
+{
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object-activity-flags
+    
+    Instance = 1 << 0,
+    Join = 1 << 1,
+    Spectate = 1 << 2,
+    JoinRequest = 1 << 3,
+    Sync = 1 << 4,
+    Play = 1 << 5,
+    PartyPrivacyFriends = 1 << 6,
+    PartyPrivacyVoiceChannel = 1 << 7,
+    Embedded = 1 << 8
+}
+
+/// <summary>
+/// Represents an <see cref="Activity"/> secret.
+/// </summary>
+public record ActivitySecret
+{
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object-activity-secrets
+    
+    /// <summary>
+    /// Secret for joining a party.
+    /// </summary>
+    [JsonProperty("join")]
+    public string? Join { get; init; }
+    
+    /// <summary>
+    /// Secret for spectating a game.
+    /// </summary>
+    [JsonProperty("spectate")]
+    public string? Spectate { get; init; }
+    
+    /// <summary>
+    /// Secret for a specific instanced match.
+    /// </summary>
+    [JsonProperty("match")]
+    public string? Match { get; init; }
+    
+    private ActivitySecret() { }
+}
+
+/// <summary>
+/// Represents an <see cref="Activity"/> asset.
+/// </summary>
+public record ActivityAsset
+{
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object-activity-assets
+    
+    /// <summary>
+    /// Large image value.
+    /// </summary>
+    [JsonProperty("large_image")]
+    public string? LargeImage { get; init; }
+    
+    /// <summary>
+    /// Text displayed when hovering over the large image of the activity.
+    /// </summary>
+    [JsonProperty("large_text")]
+    public string? LargeText { get; init; }
+    
+    /// <summary>
+    /// URL that is opened when clicking on the large image.
+    /// </summary>
+    [JsonProperty("large_url")]
+    public string? LargeUrl { get; init; }
+    
+    /// <summary>
+    /// Small image value.
+    /// </summary>
+    [JsonProperty("small_image")]
+    public string? SmallImage { get; init; }
+    
+    /// <summary>
+    /// Text displayed when hovering over the small image of the activity.
+    /// </summary>
+    [JsonProperty("small_text")]
+    public string? SmallText { get; init; }
+    
+    /// <summary>
+    /// URL that is opened when clicking on the small image.
+    /// </summary>
+    [JsonProperty("small_url")]
+    public string? SmallUrl { get; init; }
+    
+    /// <summary>
+    /// Displayed as a banner on a Game Invite.
+    /// </summary>
+    [JsonProperty("invite_cover_image")]
+    public string? InviteCoverImage { get; init; }
+    
+    private ActivityAsset() { }
+}
+
+/// <summary>
+/// Represents an <see cref="Activity"/> party.
+/// </summary>
+public record ActivityParty
+{
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object-activity-party
+    
+    /// <summary>
+    /// ID of the party.
+    /// </summary>
+    [JsonProperty("id")]
+    public string? Id { get; init; }
+    
+    /// <summary>
+    /// List of two integers (current size, max size), used to show the party's current and maximum size.
+    /// </summary>
+    [JsonProperty("size")]
+    public List<int>? Size { get; init; }
+    
+    private ActivityParty() { }
+}
+
+/// <summary>
+/// Represents an <see cref="Activity"/> status display type.
+/// </summary>
+public enum StatusDisplayType
+{
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object-status-display-types
+    
+    /// <summary>
+    /// "Listening to Spotify"
+    /// </summary>
+    Name,
+    
+    /// <summary>
+    /// "Listening to Rick Astley"
+    /// </summary>
+    State,
+    
+    /// <summary>
+    /// Listening to Never Gonna Give You Up"
+    /// </summary>
+    Details
+}
+
+/// <summary>
+/// Represents an <see cref="Activity"/> timestamp.
+/// </summary>
+public record ActivityTimestamp
+{
+    // DOCS: https://discord.com/developers/docs/events/gateway-events#activity-object-activity-timestamps
+    
+    /// <summary>
+    /// When the activity started.
+    /// </summary>
+    [JsonIgnore] public DateTime? Start => _start is not null ? DateTimeOffset.FromUnixTimeMilliseconds(_start.Value).UtcDateTime : null; 
+    [JsonProperty("start")] private long? _start;
+    
+    /// <summary>
+    /// When the activity ends.
+    /// </summary>
+    [JsonIgnore] public DateTime? End => _end is not null ? DateTimeOffset.FromUnixTimeMilliseconds(_end.Value).UtcDateTime : null; 
+    [JsonProperty("end")] private long? _end;
+    
+    private ActivityTimestamp() { }
+}
+
+/// <summary>
+/// Represents an <see cref="Activity"/> type.
 /// </summary>
 public enum ActivityType
 {
@@ -277,9 +598,14 @@ public enum ActivityType
     Playing,
     
     /// <summary>
+    /// "Streaming <b>Rocket League</b>"
+    /// </summary>
+    Streaming,
+    
+    /// <summary>
     /// "Listening to <b>Spotify</b>"
     /// </summary>
-    Listening = 2,
+    Listening,
     
     /// <summary>
     /// "Watching <b>YouTube Together</b>"
@@ -287,13 +613,14 @@ public enum ActivityType
     Watching,
     
     /// <summary>
+    /// 😎 I am cool
+    /// </summary>
+    Custom,
+    
+    /// <summary>
     /// "Competing in <b>Arena World Champions</b>"
     /// </summary>
-    Competing = 5
-    
-    // NOTE: Bot users can't use these types
-    // Streaming
-    // Custom
+    Competing
 }
 
 /// <summary>
@@ -311,6 +638,19 @@ public record struct CacheManager
     /// can be accessed via <see cref="Guild.Self"/>.
     /// </summary>
     public bool Members;
+
+    /// <summary>
+    /// Initializes a cache manager with the following settings:
+    /// <list type="bullet">
+    ///     <item><c>Messages</c> = 0 (messages are never cached)</item>
+    ///     <item><c>Members</c> = <c>true</c></item>
+    /// </list>
+    /// </summary>
+    public static readonly CacheManager MembersOnly = new()
+    {
+        Messages = (0, TimeSpan.FromMinutes(0)),
+        Members = true
+    };
     
     /// <summary>
     /// Initializes a cache manager with the following settings:
