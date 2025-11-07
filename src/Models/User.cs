@@ -72,6 +72,12 @@ public class User : IEquatable<User>
     /// </summary>
     [JsonIgnore]
     public Media? AvatarDecoration { get; }
+    
+    /// <summary>
+    /// The users collectibles, contains information such as their nameplate, etc.
+    /// </summary>
+    [JsonProperty("collectibles")]
+    public Collectibles? Collectibles { get; private set; }
 
     #region CUSTOM
 
@@ -168,6 +174,52 @@ public class ClientUser : User
             if (loc.GetDescription() == locale) Locale = loc; break;
         }
     }
+}
+
+/// <summary>
+/// Represents the collectibles a <see cref="User"/> has, excluding Avatar Decorations and Profile Effects.
+/// </summary>
+public record Collectibles
+{
+    /// <summary>
+    /// A users nameplate, or <c>null</c> if they don't have one.
+    /// </summary>
+    [JsonProperty("nameplate")]
+    public Nameplate? Nameplate { get; init; }
+    
+    private Collectibles() { }
+}
+
+/// <summary>
+/// Represents an item in a users <see cref="Collectibles"/>.
+/// </summary>
+public record Nameplate
+{
+    /// <summary>
+    /// ID of the nameplate SKU.
+    /// </summary>
+    [JsonProperty("sku_id")]
+    public ulong SkuId { get; init; }
+
+    /// <summary>
+    /// URL of the nameplate asset.
+    /// </summary>
+    public string Asset => $"https://cdn.discordapp.com/assets/collectibles/{_asset}asset.webm";
+    [JsonProperty("asset")] private string _asset = string.Empty;
+    
+    /// <summary>
+    /// The label of this nameplate.
+    /// </summary>
+    [JsonProperty("label")]
+    public required string Label { get; init; }
+    
+    /// <summary>
+    /// Background color of the nameplate.
+    /// </summary>
+    [JsonProperty("palette")]
+    public required string Palette { get; init; }
+    
+    private Nameplate() { }
 }
 
 /// <summary>
