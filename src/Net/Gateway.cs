@@ -21,7 +21,8 @@ internal enum Opcode
     RequestGuildMembers,
     InvalidSession,
     Hello,
-    HeartbeatAck
+    HeartbeatAck,
+    RequestSoundboardSounds = 31
 }
 
 public record Shard
@@ -76,6 +77,28 @@ public sealed class DiscordGatewayClient
     public event EventHandler<Message>? OnMessageCreate;
     
     #endregion
+
+    #region SOUNDBOARD
+
+    /// <summary>
+    /// Dispatched when a soundboard sound is created.
+    /// </summary>
+    /// <remarks>Requires <see cref="Intents.GuildExpressions"/>.</remarks>
+    public event EventHandler<SoundboardSound>? OnGuildSoundboardSoundCreate;
+    
+    /// <summary>
+    /// Dispatched when a soundboard sound is updated.
+    /// </summary>
+    /// <remarks>Requires <see cref="Intents.GuildExpressions"/>.</remarks>
+    public event EventHandler<SoundboardSound>? OnGuildSoundboardSoundUpdate;
+    
+    /// <summary>
+    /// Dispatched when a soundboard sound is deleted.
+    /// </summary>
+    /// <remarks>Requires <see cref="Intents.GuildExpressions"/>.</remarks>
+    public event EventHandler<(ulong guildId, ulong soundId, SoundboardSound? sound)>? OnGuildSoundboardSoundDelete;
+    
+    #endregion
     
     #endregion
     
@@ -113,10 +136,9 @@ public sealed class DiscordGatewayClient
 
     // Closes the WebSocket connection and sets a new WebSocket object and CancellationTokenSource. Prior to reaching
     // this the connection should have already been gracefully closed.
-    private async Task RefreshWebSocket()
+    private void RefreshWebSocket()
     {
-        if (await AttemptGracefulCloseAsync())
-            Dev.Log("[GW] Connection manually closed gracefully due to current Open state");
+        _cts.Cancel();
         _ws = new ClientWebSocket();
         _ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(10);
         _cts = new CancellationTokenSource();
@@ -125,7 +147,7 @@ public sealed class DiscordGatewayClient
     // Connects to the Discord Gateway and starts processing events.
     internal async Task ConnectAsync(bool resume)
     {
-        await RefreshWebSocket();
+        RefreshWebSocket();
         if (resume)
         {
             Dev.Log("[GW] Connecting with RESUME");
@@ -134,18 +156,31 @@ public sealed class DiscordGatewayClient
         }
         else
         {
+            ResetCoreValues();
             string wss = await _bot._rest.GetGatewayAsync();
             Dev.Log("[GW] Connecting with IDENTIFY");
             await _ws.ConnectAsync(new Uri(wss + UriParameters), _cts.Token);
         }
 
         // Start the heartbeat/gateway receive tasks.
-        _heartbeatTask = Task.Run(HeartbeatLoopAsync, _cts.Token);
+        _heartbeatTask = Task.Run(HeartbeatLoopAsync, _cts.Token).ContinueWith(task =>
+        {
+            if (task.IsFaulted)
+                throw task.Exception.InnerException!;
+        });
         _receiveTask = Task.Run(ReceiveAsync).ContinueWith(task =>
         {
             if (task.IsFaulted)
                 throw task.Exception.InnerException!;
         }, _cts.Token);;
+    }
+
+    // Disconnect from the gateway.
+    internal async Task DisconnectAsync(bool instant)
+    {
+        await _ws.CloseAsync(instant ? WebSocketCloseStatus.NormalClosure : WebSocketCloseStatus.Empty, string.Empty,
+            CancellationToken.None);
+        await _cts.CancelAsync();
     }
 
     // Resets values associated with the gateway that would indicate a new connection.
@@ -156,21 +191,29 @@ public sealed class DiscordGatewayClient
         _lastSequence = null;
         _identifyRequired = true;
         _reconnectRequested = false;
+        _userTerminated = false;
     }
 
     // Keeps the connection alive with Discords required heartbeats.
     private async Task HeartbeatLoopAsync()
     {
-        Dev.Log("[GW] Heartbeat loop started");
-        while (_ws.State == WebSocketState.Open)
+        Dev.Log("[GW] Starting heartbeat...");
+        while (true)
         {
-            await Task.Delay(_heartbeatInterval, _cts.Token);
-            // After the delay, check if the connection is still open.
-            if (_ws.State == WebSocketState.Open)
-                await SendHeartbeatAsync();
-            else
+            try
             {
-                Dev.Log($"[GW] Heartbeat loop terminated due to connection state ({_ws.State})");
+                await Task.Delay(_heartbeatInterval, _cts.Token);
+                if (_ws.State == WebSocketState.Open)
+                    await SendHeartbeatAsync();
+                else
+                {
+                    Dev.Log($"[GW] Heartbeat loop >stopped< due to connection state ({_ws.State})");
+                    break;
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                Dev.Log("[GW] Heartbeat loop >cancelled< due to cancel request");
                 break;
             }
         }
@@ -187,12 +230,19 @@ public sealed class DiscordGatewayClient
                 await HandleDiscordEventAsync(payload);
             else
             {
-                Dev.Log("[GW] ConvertPayloadAsync received null response due to close or error");
+                Dev.Log("[GW] ConvertPayloadAsync received null response due to close/error/reconnect request");
                 if (_reconnectRequested)
                 {
                     _reconnectRequested = false;
+                    // Don't process the close codes.
                     return;
                 }
+                if (_userTerminated)
+                {
+                    Dev.Log("[GW] Session terminated by user");
+                    return;
+                }
+                
                 // According to Discord, sometimes the connection can close with no close code. If there is a close code,
                 // set it, otherwise leave it as -1 to symbolize no close code.
                 if (_ws.CloseStatus is { } status)
@@ -253,7 +303,8 @@ public sealed class DiscordGatewayClient
                 throw new DisallowedIntentsException(
                     "A disallowed intent for a Gateway Intent was sent. An intent may have been specified that you have not enabled or are not approved for");
             default:
-                Dev.Log($"[GW] WebSocket closed with unhandled close code ({closeCode}:WS state {_ws.State}) - attempting resume");
+                Dev.Log(
+                    $"[GW] WebSocket closed with unhandled close code ({closeCode}:WS state {_ws.State}) - attempting resume");
                 await ConnectAsync(true);
                 break;
         }
@@ -335,18 +386,9 @@ public sealed class DiscordGatewayClient
         }
         catch (Exception ex)
         {
-            Dev.Log($"[GW ERROR, {ex}] - {ex.Message}");
-            await AttemptGracefulCloseAsync();
+            Dev.Log($"[GW ERROR, {ex.GetType()}]: {ex.Message}");
             return null;
         }
-    }
-
-    private async Task<bool> AttemptGracefulCloseAsync()
-    {
-        if (_ws.State != WebSocketState.Open) return false;
-        await _ws.CloseAsync(WebSocketCloseStatus.Empty, string.Empty, _cts.Token);
-        await _cts.CancelAsync();
-        return true;
     }
     
     // Sends a Heartbeat payload to the gateway.
@@ -363,7 +405,7 @@ public sealed class DiscordGatewayClient
 
         await VerifyHeartbeat();
         return;
-
+        
         // Discord documentation:
         // If a client does not receive a heartbeat ACK between its attempts at sending heartbeats, this may be due to
         // a failed or "zombied" connection. The client should immediately terminate the connection with any close code
@@ -373,13 +415,18 @@ public sealed class DiscordGatewayClient
             // Wait for heartbeat ACK to be sent by Discord. This response time can differ based on server host location.
             // For now, waiting ~2 seconds seems like enough time to believe that a possible "zombie" connection occurred.
             var timeout = TimeSpan.FromSeconds(2);
-            await Task.Delay(timeout, _cts.Token);
-            
-            if (!_heartbeatResponse)
+            try
             {
-                Dev.Log($"[GW] Heartbeat timed out ({timeout.Seconds}s) - resuming session");
-                await AttemptGracefulCloseAsync();
-                await ConnectAsync(true);
+                await Task.Delay(timeout, _cts.Token);
+                if (!_heartbeatResponse)
+                {
+                    Dev.Log($"[GW] Heartbeat timed out ({timeout.Seconds}s - attempting resume");
+                    await ConnectAsync(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Dev.Log($"[GW] Heartbeat verification failed/ignored due to {ex.GetType()}: {ex.Message}");
             }
         }
     }
@@ -431,10 +478,11 @@ public sealed class DiscordGatewayClient
                         var guildCreatedId = Convert.ToUInt64(GetElementValue(D(), "id").ToString());
 
                         // If the guild is already in cache, this is most likely being dispatched again due to it
-                        // recovering from an outage. The amount of information inside a guild can be significant,
-                        // especially if it was previously chunked, so simply replacing the guild with this new one would
-                        // most likely get rid of a lot of information. To avoid this, see if the guild is already in cache
-                        // and if so, update it.
+                        // recovering from an outage; or from a Connect() from a user controlled Disconnect().
+                        //
+                        // The amount of information inside a guild can be significant, especially if it was previously
+                        // chunked, so simply replacing the guild with this new one would most likely get rid of a lot
+                        // of information. To avoid this, see if the guild is already in cache and if so, update it.
                         if (_bot.GetGuild(guildCreatedId) is { } gc)
                         {
                             gc.Update(D());
@@ -469,11 +517,39 @@ public sealed class DiscordGatewayClient
                         if (_bot.GetGuild(chunkedGuildId) is { } chunkedGuild)
                             chunkedGuild._members.UnionWith(convertedChunkedMembers);
                         break;
+                    case "GUILD_SOUNDBOARD_SOUND_CREATE":
+                        var gssCreate = DeserializeWithNewtonsoft<SoundboardSound>(D());
+                        _bot._rest.SetSoundboardSoundValues([gssCreate]);
+                        if (_bot.GetGuild(gssCreate.GuildId!.Value) is { } gscGuild)
+                            gscGuild._soundboardSounds.Add(gssCreate);
+                        OnGuildSoundboardSoundCreate?.Invoke(this, gssCreate);
+                        break;
+                    case "GUILD_SOUNDBOARD_SOUND_UPDATE":
+                        var gssUpdate = DeserializeWithNewtonsoft<SoundboardSound>(D());
+                        _bot._rest.SetSoundboardSoundValues([gssUpdate]);
+                        if (_bot.GetGuild(gssUpdate.GuildId!.Value) is { } gsuGuild)
+                        {
+                            gsuGuild._soundboardSounds.RemoveWhere(s => s.SoundId == gssUpdate.SoundId);
+                            gsuGuild._soundboardSounds.Add(gssUpdate);
+                        }
+                        OnGuildSoundboardSoundUpdate?.Invoke(this, gssUpdate);
+                        break;
+                    case "GUILD_SOUNDBOARD_SOUND_DELETE":
+                        var gsdSoundId = Convert.ToUInt64(GetElementValue(D(), "sound_id").ToString());
+                        var gsdGuildId = Convert.ToUInt64(GetElementValue(D(), "guild_id").ToString());
+                        SoundboardSound? gsdSound = null;
+                        if (_bot.GetGuild(gsdGuildId) is { } gsdGuild)
+                        {
+                            gsdSound = gsdGuild.GetSoundboardSound(gsdSoundId);
+                            gsdGuild._soundboardSounds.RemoveWhere(s => s.SoundId == gsdSoundId);
+                        }
+                        OnGuildSoundboardSoundDelete?.Invoke(this, (gsdGuildId, gsdSoundId, gsdSound));
+                        break;
                 }
                 break;
 
             case 1: // Heartbeat request
-                Dev.Log("[GW] HEARTBEAT request received");
+                Dev.Log("[GW] HEARTBEAT request received - sending requested heartbeat");
                 await SendHeartbeatAsync();
                 break;
             
@@ -508,7 +584,7 @@ public sealed class DiscordGatewayClient
                 break;
 
             case 11: // Heartbeat ACK
-                Dev.Log("[GW] HEARTBEAT ACK received");
+                Dev.Log("[GW] HEARTBEAT ACK");
                 _heartbeatResponse = true;
                 break;
 
