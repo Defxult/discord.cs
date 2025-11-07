@@ -29,6 +29,6 @@ bot.Events.OnMessageCreate += async (_, message) =>
     Console.WriteLine($"{message.Author.Name} said {message.Content}");
 };
 
-await bot.RunAsync();    
+await bot.ConnectAsync();    
 await Task.Delay(-1);
 ```
