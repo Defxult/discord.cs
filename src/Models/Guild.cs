@@ -326,6 +326,13 @@ public class Guild : IEquatable<Guild>
     /// it was completed.
     /// </summary>
     public DateTime? LastChunked { get; private set; }
+
+    /// <summary>
+    /// Soundboard sounds in the guild. Will be empty unless cached through other methods or if it was recently created
+    /// or updated.
+    /// </summary>
+    public IReadOnlyCollection<SoundboardSound> SoundboardSounds => _soundboardSounds;
+    internal readonly HashSet<SoundboardSound> _soundboardSounds = [];
     
     #endregion
     
@@ -337,19 +344,21 @@ public class Guild : IEquatable<Guild>
     
     #region PUBLIC
 
-    // TODO
-    // <remarks>Requires <see cref="Permission.ManageGuild"/>.</remarks>
-    public async Task EditAsync(GuildEdit edit)
-    {
-        throw new NotImplementedException();
-    }
+    /// <summary>
+    /// Edit the guild.
+    /// </summary>
+    /// <param name="edit">A guild edit instance.</param>
+    /// <param name="reason">The reason for editing the guild. This is displayed in the audit-log.</param>
+    /// <remarks>Requires <see cref="Permission.ManageGuild"/>.</remarks>
+    public async Task EditAsync(GuildEdit edit, string? reason = null)
+        => await Bot._rest.ModifyGuildAsync(Id, edit, reason);
 
     /// <summary>
     /// Requests all emojis in the guild.
     /// </summary>
     /// <returns>All emojis in the guild.</returns>
     /// <remarks>It's generally preferred to use <see cref="Emojis"/> unless this is needed.</remarks>
-    public async Task<IReadOnlyCollection<Emoji>> RequestEmojisAsync() =>
+    public async Task<ICollection<Emoji>> RequestEmojisAsync() =>
         await Bot._rest.ListGuildEmojisAsync(Id);
 
     /// <summary>
@@ -412,7 +421,7 @@ public class Guild : IEquatable<Guild>
     /// Requests all scheduled events for the guild.
     /// </summary>
     /// <returns>All scheduled events for the guild.</returns>
-    public async Task<IReadOnlyCollection<ScheduledEvent>> RequestScheduledEventsAsync() =>
+    public async Task<ICollection<ScheduledEvent>> RequestScheduledEventsAsync() =>
         await Bot._rest.ListScheduledEventsForGuildAsync(Id);
 
     /// <summary>
@@ -439,7 +448,7 @@ public class Guild : IEquatable<Guild>
     /// </summary>
     /// <returns>All stickers in the guild.</returns>
     /// <remarks>It's generally preferred to use <see cref="Stickers"/> unless this is needed.</remarks>
-    public async Task<IReadOnlyCollection<GuildSticker>> RequestStickersAsync() =>
+    public async Task<ICollection<GuildSticker>> RequestStickersAsync() =>
         await Bot._rest.ListGuildStickersAsync(Id);
     
     /// <summary>
@@ -463,7 +472,7 @@ public class Guild : IEquatable<Guild>
     /// </summary>
     /// <returns>All roles in the guild.</returns>
     /// <remarks>It's generally preferred to use <see cref="Roles"/> unless this is needed.</remarks>
-    public async Task<IReadOnlyCollection<Role>> RequestRolesAsync() =>
+    public async Task<ICollection<Role>> RequestRolesAsync() =>
         await Bot._rest.GetGuildRolesAsync(Id);
     
     /// <summary>
@@ -523,7 +532,7 @@ public class Guild : IEquatable<Guild>
     /// <param name="positions">A dictionary which indicates each role and its new position.</param>
     /// <param name="reason">Reason for editing the role positions. This is displayed in the audit-log.</param>
     /// <returns>All roles in the guild.</returns>
-    public async Task<List<Role>> EditRolePositionsAsync(Dictionary<Role, int> positions, string? reason = null) =>
+    public async Task<ICollection<Role>> EditRolePositionsAsync(Dictionary<Role, int> positions, string? reason = null) =>
         await Bot._rest.ModifyGuildRolePositionsAsync(Id, positions, reason);
     
     /// <summary>
@@ -546,7 +555,7 @@ public class Guild : IEquatable<Guild>
     /// required and need to be enabled in your <a href="https://discord.com/developers/applications">Discord developer portal.</a>
     /// If you don't need access to each member but want all members, consider using <see cref="ChunkAsync"/> instead.
     /// </remarks>
-    public async IAsyncEnumerable<List<Member>> RequestMembersAsync(int? amount = 1000, DateTime? after = null, bool cache = true)
+    public async IAsyncEnumerable<ICollection<Member>> RequestMembersAsync(int? amount = 1000, DateTime? after = null, bool cache = true)
     {
         const int indefinite = -1;
         var remaining = amount ?? indefinite;
@@ -594,7 +603,7 @@ public class Guild : IEquatable<Guild>
     /// <param name="startsWith">What to search for (case-insensitive).</param>
     /// <param name="limit">Maximum amount of members to return (1-1000).</param>
     /// <returns>Members whose username or nickname <i>start with</i> the given string.</returns>
-    public async Task<List<Member>> SearchMembersAsync(string startsWith, int limit = 500) =>
+    public async Task<ICollection<Member>> SearchMembersAsync(string startsWith, int limit = 500) =>
         await Bot._rest.SearchGuildMembersAsync(Id, startsWith, limit);
 
     /// <summary>
@@ -648,7 +657,7 @@ public class Guild : IEquatable<Guild>
     /// <remarks>Requires <see cref="Permission.BanMembers"/>. Each batch of records is sorted in ascending order (by Discord)
     /// according to their user ID.
     /// </remarks>
-    public async IAsyncEnumerable<List<BanRecord>> BanRecordsAsync(int? amount = 1000, ulong? before = null, ulong? after = null)
+    public async IAsyncEnumerable<ICollection<BanRecord>> BanRecordsAsync(int? amount = 1000, ulong? before = null, ulong? after = null)
     {
         // TODO: This method has not been fully tested due to not having access to a guild with more than 1000 bans.
         
@@ -708,6 +717,14 @@ public class Guild : IEquatable<Guild>
     }
 
     /// <summary>
+    /// Leave the guild.
+    /// </summary>
+    public async Task LeaveAsync()
+    {
+        await Bot._rest.LeaveGuildAsync(Id);
+    }
+    
+    /// <summary>
     /// Unban a user from the guild.
     /// </summary>
     /// <param name="id">ID of the user to unban.</param>
@@ -728,7 +745,7 @@ public class Guild : IEquatable<Guild>
     /// <returns>A named tuple containing <c>bannedUsers</c> (users who were successfully banned) and <c>failedUsers</c>
     /// (users who were not banned).</returns>
     /// <remarks>Requires <see cref="Permission.BanMembers"/> and <see cref="Permission.ManageGuild"/>.</remarks>
-    public async Task<(List<ulong> bannedUsers, List<ulong> failedUsers)> BulkBanAsync(IEnumerable<ulong> ids,
+    public async Task<(ICollection<ulong> bannedUsers, ICollection<ulong> failedUsers)> BulkBanAsync(IEnumerable<ulong> ids,
         TimeSpan? deleteMessages = null, string? reason = null)
     {
         var payload = new JSON
@@ -766,7 +783,7 @@ public class Guild : IEquatable<Guild>
     /// </summary>
     /// <returns>All invites for the guild.</returns>
     /// <remarks>Requires <see cref="Permission.ManageGuild"/> or <see cref="Permission.ViewAuditLog"/>.</remarks>
-    public async Task<IEnumerable<Invite>> InvitesAsync() =>
+    public async Task<ICollection<Invite>> InvitesAsync() =>
         await Bot._rest.GetGuildInvitesAsync(Id);
 
     /// <summary>
@@ -877,6 +894,80 @@ public class Guild : IEquatable<Guild>
     /// </summary>
     /// <returns>Whether DMs are disabled.</returns>
     public bool DmsDisabled() => IncidentsData?.DmDisabledUntil is not null;
+
+    /// <summary>
+    /// Retrieves a soundboard sound from the cache.
+    /// </summary>
+    /// <param name="id">Soundboard sound ID.</param>
+    /// <returns>The soundboard sound matching the given ID, or <c>null</c> if not found.</returns>
+    /// <remarks>Soundboard sounds aren't cached upon initial loading and can only be cached via <see cref="RequestSoundboardSoundsAsync"/>,
+    /// or <see cref="RequestSoundboardSoundAsync"/>.
+    /// </remarks>
+    public SoundboardSound? GetSoundboardSound(ulong id) =>
+        _soundboardSounds.FirstOrDefault(s => s.SoundId == id);
+
+    /// <summary>
+    /// All soundboard sounds for the guild. If the soundboards were previously cached, use <see cref="SoundboardSounds"/>
+    /// instead.
+    /// </summary>
+    /// <param name="cache">Whether the soundboard sounds should be cached.</param>
+    /// <returns>All soundboard sounds in the guild.</returns>
+    /// <remarks><see cref="SoundboardSound.User"/> will be <c>null</c> unless the bot has <see cref="Permission.CreateGuildExpressions"/>
+    /// or <see cref="Permission.ManageGuildExpressions"/>.
+    /// </remarks>
+    public async Task<ICollection<SoundboardSound>> RequestSoundboardSoundsAsync(bool cache = true)
+    {
+        var sounds = await Bot._rest.ListGuildSoundboardSoundsAsync(Id);
+        if (cache)
+            _soundboardSounds.UnionWith(sounds);
+        return sounds;
+    }
+
+    /// <summary>
+    /// Request a soundboard sound by its ID. Unlike <see cref="GetSoundboardSound"/>, this is an API call.
+    /// </summary>
+    /// <param name="id">Sound ID.</param>
+    /// <param name="cache">Whether the soundboard sound should be cached.</param>
+    /// <returns>A soundboard sound.</returns>
+    /// <remarks><see cref="SoundboardSound.User"/> will be <c>null</c> unless the bot has <see cref="Permission.CreateGuildExpressions"/>
+    /// or <see cref="Permission.ManageGuildExpressions"/>.
+    /// </remarks>
+    public async Task<SoundboardSound> RequestSoundboardSoundAsync(ulong id, bool cache = true)
+    {
+        var sound = await Bot._rest.GetGuildSoundboardSoundAsync(Id, id);
+        if (cache)
+            _soundboardSounds.Add(sound);
+        return sound;
+    }
+
+    /// <summary>
+    /// Creates a soundboard sound.
+    /// </summary>
+    /// <param name="name">Name of the sound (2-32 characters).</param>
+    /// <param name="file">The sound file (<c>.mp3</c> or <c>.ogg</c>). Max size of 512kb and max duration of 5.2 seconds.</param>
+    /// <param name="volume">Volume of the sound (between 0 and 1).</param>
+    /// <param name="emojiId">ID of the custom emoji for the soundboard sound.</param>
+    /// <param name="emojiName">Unicode character of a standard emoji for the soundboard sound.</param>
+    /// <param name="cache">Whether the soundboard sound is cached.</param>
+    /// <param name="reason">The reason for creating a soundboard sound. This is displayed in the audit-log.</param>
+    /// <returns>The newly created soundboard sound.</returns>
+    /// <remarks>Requires <see cref="Permission.CreateGuildExpressions"/>.</remarks>
+    public async Task<SoundboardSound> CreateSoundboardSoundAsync(string name, DFile file, float volume = 1F,
+        ulong? emojiId = null, string? emojiName = null, bool cache = true, string? reason = null)
+    {
+        var payload = new JSON
+        {
+            { "name", name },
+            { "sound", file._mimeTypeBase64 },
+            { "volume", volume },
+            { "emoji_id", emojiId },
+            { "emoji_name", emojiName },
+        };
+        var sound = await Bot._rest.CreateGuildSoundboardSoundAsync(Id, payload, reason);
+        if (cache)
+            _soundboardSounds.Add(sound);
+        return sound;
+    }
     
     #endregion
 
@@ -943,6 +1034,220 @@ public class Guild : IEquatable<Guild>
     }
 
     #endregion
+}
+
+/// <summary>
+/// Represents a <see cref="Guild"/> soundboard sound.
+/// </summary>
+public record SoundboardSound
+{
+    // DOCS: https://discord.com/developers/docs/resources/soundboard#soundboard-sound-object
+    
+    /// <summary>
+    /// Name of this sound.
+    /// </summary>
+    [JsonProperty("name")]
+    public required string Name { get; init; }
+    
+    /// <summary>
+    /// ID of this sound.
+    /// </summary>
+    [JsonProperty("sound_id")]
+    public ulong SoundId { get; init; }
+    
+    /// <summary>
+    /// Volume of this sound, from 0 to 1.
+    /// </summary>
+    [JsonProperty("volume")]
+    public float Volume { get; init; }
+    
+    /// <summary>
+    /// ID of this sound's custom emoji.
+    /// </summary>
+    [JsonProperty("emoji_id")]
+    public ulong? EmojiId { get; init; }
+    
+    /// <summary>
+    /// Unicode character of this sound's standard emoji.
+    /// </summary>
+    [JsonProperty("emoji_name")]
+    public string? EmojiName { get; init; }
+    
+    /// <summary>
+    /// ID of the guild this sound is in.
+    /// </summary>
+    [JsonProperty("guild_id")]
+    public ulong? GuildId { get; init; }
+    
+    /// <summary>
+    /// Whether this sound can be used, may be <c>false</c> due to loss of Server Boosts.
+    /// </summary>
+    [JsonProperty("available")]
+    public bool IsAvailable { get; init; }
+    
+    /// <summary>
+    /// User who created this sound.
+    /// </summary>
+    [JsonProperty("user")]
+    public User? User { get; init; }
+
+    #region CUSTOM
+
+    /// <summary>
+    /// Your bot instance.
+    /// </summary>
+    public Bot Bot { get; internal set; }
+
+    /// <summary>
+    /// Whether this is a default soundboard sound.
+    /// </summary>
+    public bool IsDefault => GuildId is null;
+    
+    /// <summary>
+    /// URL for the soundboard sound file.
+    /// </summary>
+    public string Url => $"https://cdn.discordapp.com/soundboard-sounds/{SoundId}";
+
+    #endregion
+    
+    private SoundboardSound() { }
+
+    /// <summary>
+    /// Edit the soundboard sound.
+    /// </summary>
+    /// <param name="edit">A soundboard sound edit object.</param>
+    /// <param name="reason">The reason for editing the soundboard sound. This is displayed in the audit-log.</param>
+    /// <returns>The updated soundboard sound.</returns>
+    /// <exception cref="DiscordException"><see cref="GuildId"/> is <c>null</c>, aka a default soundboard sound cannot
+    /// be edited.
+    /// </exception>
+    /// <remarks>Requires <see cref="Permission.ManageGuildExpressions"/>.</remarks>
+    public async Task<SoundboardSound> EditAsync(SoundboardSoundEdit edit, string? reason = null)
+    {
+        if (IsDefault)
+            throw new DiscordException("Cannot edit a non-guild soundboard sound.");
+        return await Bot._rest.ModifyGuildSoundboardSoundAsync(GuildId!.Value, SoundId, edit, reason);
+    }
+
+    /// <summary>
+    /// Delete the soundboard sound.
+    /// </summary>
+    /// <param name="reason">The reason for deleting the soundboard sound. This is displayed in the audit-log.</param>
+    /// <exception cref="DiscordException"><see cref="GuildId"/> is <c>null</c>, aka a default soundboard sound cannot
+    /// be deleted.
+    /// </exception>
+    public async Task DeleteAsync(string? reason = null)
+    {
+        if (IsDefault)
+            throw new DiscordException("Cannot delete a non-guild soundboard sound.");
+        await Bot._rest.DeleteGuildSoundboardSoundAsync(GuildId!.Value, SoundId, reason);
+    }
+
+    // TODO: This is untested (pending voice implementation)
+    // /// <summary>
+    // /// Play the soundboard sound in the specified channel.
+    // /// </summary>
+    // /// <param name="id">Voice channel ID to play the sound.</param>
+    // /// <remarks>Requires <see cref="Permission.Speak"/> and <see cref="Permission.UseSoundboard"/>, and also
+    // /// <see cref="Permission.UseExternalSoundboard"/> if the sound is from a different guild. Additionally, requires the
+    // /// bot to be connected to the voice channel with the given <paramref name="id"/>, having a voice state without
+    // /// <see cref="VoiceState.IsDeafened"/>, <see cref="VoiceState.IsSelfDeafened"/>, <see cref="VoiceState.IsMuted"/>,
+    // /// or <see cref="VoiceState.IsSuppressed"/> enabled.
+    // /// </remarks>
+    // public async Task PlayAsync(ulong id)
+    // {
+    //     await Bot._rest.SendSoundboardSoundAsync(id, SoundId, GuildId);
+    // }
+    
+    /// <summary>
+    /// Convert the sound into a Discord file.
+    /// </summary>
+    /// <param name="format">The sound file type/format.</param>
+    /// <param name="timeout">When the request will time out (defaults to 30 seconds).</param>
+    /// <returns>A file representation of the sound.</returns>
+    public async Task<DFile> ToFile(SoundboardSoundFormat format = SoundboardSoundFormat.Mp3, TimeSpan? timeout = null)
+    {
+        using var http = new HttpClient();
+        http.Timeout = timeout ?? TimeSpan.FromSeconds(30);
+        var bytes = await http.GetByteArrayAsync(Url);
+        return new DFile($"{Name}{format.GetDescription()}", bytes);
+    }
+}
+
+/// <summary>
+/// Represents the values that can be edited for a <see cref="SoundboardSound"/>.
+/// </summary>
+public readonly struct SoundboardSoundEdit
+{
+    internal readonly JSON _payload = [];
+    
+    /// <summary>
+    /// Initialize a new soundboard sound edit instance.
+    /// </summary>
+    public SoundboardSoundEdit() { }
+
+    /// <summary>
+    /// Set the soundboard sound name.
+    /// </summary>
+    /// <param name="name">Name of this sound (2-32 characters).</param>
+    /// <returns>The edit instance.</returns>
+    public SoundboardSoundEdit SetName(string name)
+    {
+        _payload["name"] = name;
+        return this;
+    }
+
+    /// <summary>
+    /// Set the soundboard sound volume.
+    /// </summary>
+    /// <param name="volume">Volume of this sound, from 0 to 1.</param>
+    /// <returns>The edit instance.</returns>
+    public SoundboardSoundEdit SetVolume(float volume)
+    {
+        _payload["volume"] = volume;
+        return this;
+    }
+
+    /// <summary>
+    /// Set the soundboard sound emoji ID.
+    /// </summary>
+    /// <param name="emojiId">ID of the custom emoji for the soundboard sound, or <c>null</c> to remove it.</param>
+    /// <returns>The edit instance.</returns>
+    public SoundboardSoundEdit SetEmojiId(ulong? emojiId)
+    {
+        _payload["emoji_id"] = emojiId;
+        return this;
+    }
+
+    /// <summary>
+    /// Set the soundboard sound emoji name.
+    /// </summary>
+    /// <param name="emojiName">Unicode character of a standard emoji for the soundboard sound, or <c>null</c> to remove it.
+    /// </param>
+    /// <returns>The edit instance.</returns>
+    public SoundboardSoundEdit SetEmojiName(string? emojiName)
+    {
+        _payload["emoji_name"] = emojiName;
+        return this;
+    }
+}
+
+/// <summary>
+/// Represents a <see cref="SoundboardSound"/> file format.
+/// </summary>
+public enum SoundboardSoundFormat
+{
+    /// <summary>
+    /// Ensures the sound is in a <c>.mp3</c> file format.
+    /// </summary>
+    [Description(".mp3")]
+    Mp3,
+    
+    /// <summary>
+    /// Ensures the sound is in a <c>.ogg</c> file format.
+    /// </summary>
+    [Description(".ogg")]
+    Ogg
 }
 
 /// <summary>

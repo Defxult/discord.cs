@@ -35,7 +35,7 @@ public enum Permission : ulong
     ManageNicknames                  = 1UL << 27,
     ManageRoles                      = 1UL << 28,
     ManageWebhooks                   = 1UL << 29,
-    ManageEmojisAndStickers          = 1UL << 30,
+    ManageGuildExpressions           = 1UL << 30,
     UseApplicationCommands           = 1UL << 31,
     RequestToSpeak                   = 1UL << 32,
     ManageEvents                     = 1UL << 33,
@@ -44,7 +44,7 @@ public enum Permission : ulong
     CreatePrivateThreads             = 1UL << 36,
     UseExternalStickers              = 1UL << 37,
     SendMessagesInThreads            = 1UL << 38,
-    UseActivities                    = 1UL << 39,
+    UseEmbeddedActivities            = 1UL << 39,
     ModerateMembers                  = 1UL << 40,
     ViewCreatorMonetizationAnalytics = 1UL << 41,
     UseSoundboard                    = 1UL << 42,
@@ -97,7 +97,7 @@ public class Permissions
     ///     <item><see cref="Permission.Connect"/></item>
     ///     <item><see cref="Permission.Speak"/></item>
     ///     <item><see cref="Permission.Stream"/></item>
-    ///     <item><see cref="Permission.UseActivities"/></item>
+    ///     <item><see cref="Permission.UseEmbeddedActivities"/></item>
     ///     <item><see cref="Permission.UseVoiceActivityDetection"/></item>
     ///     <item><see cref="Permission.UseSoundboard"/></item>
     ///     <item><see cref="Permission.UseExternalSoundboard"/></item>
@@ -121,7 +121,7 @@ public class Permissions
         Permission.Connect,
         Permission.Speak,
         Permission.Stream,
-        Permission.UseActivities,
+        Permission.UseEmbeddedActivities,
         Permission.UseVoiceActivityDetection,
         Permission.UseSoundboard,
         Permission.UseExternalSoundboard,
@@ -179,7 +179,7 @@ public class Permissions
     /// Initializes new permissions instance.
     /// </summary>
     /// <param name="enable">The permissions to enable.</param>
-    public Permissions(IReadOnlyCollection<Permission> enable)
+    public Permissions(IEnumerable<Permission> enable)
     {
         ulong bitValue = 0;
         foreach (var perm in enable)

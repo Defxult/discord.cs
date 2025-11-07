@@ -891,6 +891,114 @@ internal class Rest
 
     #endregion
 
+    #region SOUNDBOARD
+
+    internal void SetSoundboardSoundValues(IEnumerable<SoundboardSound> sounds)
+    {
+        foreach (var sound in sounds)
+            sound.Bot = _bot;
+    }
+
+    // Send a soundboard sound to a voice channel the user is connected to. Fires a Voice Channel Effect Send Gateway event.
+    // 
+    // Requires the SPEAK and USE_SOUNDBOARD permissions, and also the USE_EXTERNAL_SOUNDS permission if the sound is from
+    // a different server. Additionally, requires the user to be connected to the voice channel, having a voice state
+    // without deaf, self_deaf, mute, or suppress enabled.
+    // https://discord.com/developers/docs/resources/soundboard#send-soundboard-sound
+    internal async Task SendSoundboardSoundAsync(ulong channelId, ulong soundId, ulong? guildId)
+    {
+        var payload = new JSON
+        {
+            { "sound_id", soundId },
+            { "source_guild_id", guildId },
+        };
+        await RequestAsync(HttpMethod.Post, Route($"/channels/{channelId}/send-soundboard-sound"), payload);
+    }
+    
+    // Returns an array of soundboard sound objects that can be used by all users.
+    // https://discord.com/developers/docs/resources/soundboard#list-default-soundboard-sounds
+    internal async Task<List<SoundboardSound>> ListDefaultSoundboardSoundsAsync()
+    {
+        string data = await RequestAsync(Get, Route("/soundboard-default-sounds"));
+        var sounds = JsonConvert.DeserializeObject<List<SoundboardSound>>(data)!;
+        SetSoundboardSoundValues(sounds);
+        return sounds;
+    }
+    
+    // Returns a list of the guild's soundboard sounds. Includes user fields if the bot has the CREATE_GUILD_EXPRESSIONS
+    // or MANAGE_GUILD_EXPRESSIONS permission.
+    // https://discord.com/developers/docs/resources/soundboard#list-guild-soundboard-sounds
+    internal async Task<List<SoundboardSound>> ListGuildSoundboardSoundsAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/soundboard-sounds"));
+        var doc = JsonDocument.Parse(data);
+        var element = doc.RootElement.GetProperty("items");
+        var sounds = DiscordGatewayClient.DeserializeWithNewtonsoft<List<SoundboardSound>>(element);
+        SetSoundboardSoundValues(sounds);
+        return sounds;
+    }
+    
+    // Returns a soundboard sound object for the given sound id. Includes the user field if the bot has the
+    // CREATE_GUILD_EXPRESSIONS or MANAGE_GUILD_EXPRESSIONS permission.
+    // https://discord.com/developers/docs/resources/soundboard#get-guild-soundboard-sound
+    internal async Task<SoundboardSound> GetGuildSoundboardSoundAsync(ulong guildId, ulong soundId)
+    {
+        string data = await RequestAsync(HttpMethod.Get, Route($"/guilds/{guildId}/soundboard-sounds/{soundId}"));
+        var sound = JsonConvert.DeserializeObject<SoundboardSound>(data)!;
+        SetSoundboardSoundValues([sound]);
+        return sound;
+    }
+    
+    // Create a new soundboard sound for the guild. Requires the CREATE_GUILD_EXPRESSIONS permission. Returns the new
+    // soundboard sound object on success. Fires a Guild Soundboard Sound Create Gateway event.
+    //
+    // Soundboard sounds have a max file size of 512kb and a max duration of 5.2 seconds.
+    // https://discord.com/developers/docs/resources/soundboard#create-guild-soundboard-sound
+    internal async Task<SoundboardSound> CreateGuildSoundboardSoundAsync(ulong guildId, object payload, string? reason)
+    {
+        string data = await RequestAsync(Post, Route($"/guilds/{guildId}/soundboard-sounds"), payload, reason);
+        var sound = JsonConvert.DeserializeObject<SoundboardSound>(data)!;
+        SetSoundboardSoundValues([sound]);
+        return sound;
+    }
+
+    // Modify the given soundboard sound. For sounds created by the current user, requires either the CREATE_GUILD_EXPRESSIONS
+    // or MANAGE_GUILD_EXPRESSIONS permission. For other sounds, requires the MANAGE_GUILD_EXPRESSIONS permission.
+    // Returns the updated soundboard sound object on success. Fires a Guild Soundboard Sound Update Gateway event.
+    // https://discord.com/developers/docs/resources/soundboard#modify-guild-soundboard-sound
+    internal async Task<SoundboardSound> ModifyGuildSoundboardSoundAsync(ulong guildId, ulong soundId,
+        SoundboardSoundEdit edit, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/guilds/{guildId}/soundboard-sounds/{soundId}"), edit._payload,
+            reason);
+        var sound = JsonConvert.DeserializeObject<SoundboardSound>(data)!;
+        SetSoundboardSoundValues([sound]);
+        return sound;
+    }
+    
+    // Delete the given soundboard sound. For sounds created by the current user, requires either the CREATE_GUILD_EXPRESSIONS
+    // or MANAGE_GUILD_EXPRESSIONS permission. For other sounds, requires the MANAGE_GUILD_EXPRESSIONS permission.
+    // Returns 204 No Content on success. Fires a Guild Soundboard Sound Delete Gateway event.
+    // https://discord.com/developers/docs/resources/soundboard#delete-guild-soundboard-sound
+    internal async Task DeleteGuildSoundboardSoundAsync(ulong guildId, ulong soundId, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/guilds/{guildId}/soundboard-sounds/{soundId}"), reason);
+    }
+
+    #endregion
+    
+    #region USER
+
+    // Leave a guild. Returns a 204 empty response on success. Fires a Guild Delete Gateway event and a Guild Member
+    // Remove Gateway event.
+    // https://discord.com/developers/docs/resources/user#leave-guild
+    internal async Task LeaveGuildAsync(ulong guildId)
+    {
+        await RequestAsync(Delete, Route($"/users/@me/guilds/{guildId}"));
+    }
+
+    #endregion
+    
     // Combine the base API route with the HTTP request-specific route.
     private static string Route(string endpoint, ApiRoute route = ApiRoute.Base)
     {

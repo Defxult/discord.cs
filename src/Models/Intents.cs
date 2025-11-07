@@ -11,7 +11,7 @@ public enum Intents : long
     Guilds = 1L << 0,
     GuildMembers = 1L << 1,
     GuildModeration = 1L << 2,
-    GuildEmojisAndStickers = 1L << 3,
+    GuildExpressions = 1L << 3,
     GuildIntegrations = 1L << 4,
     GuildWebhooks = 1L << 5,
     GuildInvites = 1L << 6,
@@ -33,7 +33,7 @@ public enum Intents : long
     /// <summary>
     /// Enables all intents <b>except</b> <see cref="GuildPresences"/>, <see cref="GuildMembers"/>, and <see cref="MessageContent"/>.
     /// </summary>
-    Unprivileged = Guilds | GuildModeration | GuildEmojisAndStickers | GuildIntegrations |
+    Unprivileged = Guilds | GuildModeration | GuildExpressions | GuildIntegrations |
         GuildWebhooks | GuildInvites | GuildVoiceStates | GuildMessages |
         GuildMessageReactions | GuildMessageTyping | DmMessages | DmReactions |
         DmTyping | GuildScheduledEvents | AutoModerationConfiguration | AutoModerationExecution |
@@ -42,7 +42,7 @@ public enum Intents : long
     /// <summary>
     /// Enables all intents <b>except</b> <see cref="Intents.GuildPresences"/>, <see cref="Intents.GuildMessageTyping"/>, and <see cref="Intents.DmTyping"/>  
     /// </summary>
-    Default = Guilds | GuildMembers | GuildModeration | GuildEmojisAndStickers |
+    Default = Guilds | GuildMembers | GuildModeration | GuildExpressions |
         GuildIntegrations | GuildWebhooks | GuildInvites | GuildVoiceStates |
         GuildMessages | GuildMessageReactions | DmMessages | DmReactions |
         MessageContent | GuildScheduledEvents | AutoModerationConfiguration | AutoModerationExecution |
