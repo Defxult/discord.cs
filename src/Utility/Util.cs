@@ -106,6 +106,13 @@ public static class Util
 public static class Markdown
 {
     /// <summary>
+    /// Enables the ability to click on the phone number and use "tel:number".
+    /// </summary>
+    /// <param name="number">A phone number.</param>
+    /// <returns>The clickable phone number.</returns>
+    public static string PhoneNumber(int number) => $"<+{number}>";
+    
+    /// <summary>
     /// Enables the ability to click on the email and use "mailto:email".
     /// </summary>
     /// <param name="email">An email address</param>
