@@ -4,7 +4,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for taking the time to submit an issue! These improve the library and makes the overall experience much better.
+        Thank you for taking the time to submit an issue! These improve the library and makes the overall experience much better. If you need any further assistance, consider joining our Discord server: https://discord.gg/6TNJHcGRYv
   - type: textarea
     attributes:
       label: Describe the bug
