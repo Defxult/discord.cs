@@ -73,8 +73,8 @@ public class Bot
         if (Token is null) throw new DiscordException("Bot token not set");
         Intents = intents;
         ShardId = shardId;
-        _gateway = new DiscordGatewayClient(this, intents);
         _rest = new Rest(this);
+        _gateway = new DiscordGatewayClient(this, intents);
         CacheManager = cacheManager ?? CacheManager.Default;
         _messageCacheTimer = new Timer(_ =>
         {

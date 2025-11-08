@@ -64,7 +64,14 @@ public sealed class DiscordGatewayClient
     /// Dispatched when a guild becomes or was already unavailable due to an outage, or when the bot leaves or is removed
     /// from a guild. If <c>unavailable</c> is <c>null</c>, the bot was removed from the guild.
     /// </summary>
+    /// <remarks>Requires <see cref="Intents.Guilds"/>.</remarks>
     public event EventHandler<(ulong id, bool? unavailable)>? OnGuildDelete;
+    
+    /// <summary>
+    /// Dispatched when a guild is updated.
+    /// </summary>
+    /// <remarks>Requires <see cref="Intents.Guilds"/>.</remarks>
+    public event EventHandler<Guild>? OnGuildUpdate;
 
     #endregion
     
@@ -109,6 +116,7 @@ public sealed class DiscordGatewayClient
     internal bool _userTerminated;
     
     private Bot _bot;
+    private Rest _rest;
     private Intents _intents;
     private readonly string _token;
     private ulong? _lastSequence;
@@ -123,6 +131,7 @@ public sealed class DiscordGatewayClient
     internal DiscordGatewayClient(Bot bot, Intents intents)
     {
         _bot = bot;
+        _rest = bot._rest;
         _token = bot.Token!;
         _intents = intents;
         _heartbeatInterval = 30_000;
@@ -468,38 +477,41 @@ public sealed class DiscordGatewayClient
                         Dev.Log("[GW] Successfully resumed");
                         break;
                     case "MESSAGE_CREATE":
-                        var messageCreated = DeserializeWithNewtonsoft<Message>(D());
-                        messageCreated.Bot = _bot;
+                        var createdMessage = DeserializeWithNewtonsoft<Message>(D());
+                        _rest.SetMessageValues([createdMessage]);
                         
-                        _bot.CacheMessage(messageCreated);
-                        OnMessageCreate?.Invoke(this, messageCreated);
+                        _bot.CacheMessage(createdMessage);
+                        OnMessageCreate?.Invoke(this, createdMessage);
                         break;
                     case "GUILD_CREATE":
-                        var guildCreatedId = Convert.ToUInt64(GetElementValue(D(), "id").ToString());
-
+                        var createdGuild = DeserializeWithNewtonsoft<Guild>(D());
+                        _rest.SetGuildValues(createdGuild);
+                        
                         // If the guild is already in cache, this is most likely being dispatched again due to it
                         // recovering from an outage; or from a Connect() from a user controlled Disconnect().
                         //
                         // The amount of information inside a guild can be significant, especially if it was previously
                         // chunked, so simply replacing the guild with this new one would most likely get rid of a lot
                         // of information. To avoid this, see if the guild is already in cache and if so, update it.
-                        if (_bot.GetGuild(guildCreatedId) is { } gc)
+                        if (_bot.GetGuild(createdGuild.Id) is { } fcg)
                         {
-                            gc.Update(D());
-                            OnGuildCreate?.Invoke(this, gc);
+                            fcg.Update(createdGuild);
+                            OnGuildCreate?.Invoke(this, fcg);
                         }
                         else
                         {
-                            var guildCreated = DeserializeWithNewtonsoft<Guild>(D());
-                            guildCreated.Bot = _bot;
-                            guildCreated.CacheMembersFromCreate(payload, _bot.User!.Id);
-                            _bot._rest.SetEmojiValues(guildCreated._emojis, guildCreatedId);
-                            _bot._rest.SetRoleValues(guildCreated._roles, guildCreatedId);
-                            _bot._guilds.Add(guildCreated);
-                            OnGuildCreate?.Invoke(this, guildCreated);
+                            createdGuild.CacheMembersFromCreate(payload, _bot.User!.Id);
+                            _bot._guilds.Add(createdGuild);
+                            OnGuildCreate?.Invoke(this, createdGuild);
                         }
                         break;
                     case "GUILD_UPDATE":
+                        var updatedGuild = DeserializeWithNewtonsoft<Guild>(D());
+                        if (_bot.GetGuild(updatedGuild.Id) is { } fug)
+                        {
+                            fug.Update(updatedGuild);
+                            OnGuildUpdate?.Invoke(this, fug);
+                        }
                         break;
                     case "GUILD_DELETE":
                         var gdId = GetElementValue(D(), "id").GetUInt64();

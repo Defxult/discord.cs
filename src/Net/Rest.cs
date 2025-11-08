@@ -71,13 +71,23 @@ internal class Rest
 
     #region MESSAGE
 
+    internal void SetMessageValues(IEnumerable<Message> message)
+    {
+        foreach (var m in message)
+        {
+            m.Bot = _bot;
+        }
+    }
+
     // DOCS: https://discord.com/developers/docs/resources/message#create-message
     internal async Task<Message> CreateMessageAsync(ulong channelId, object payload)
     {
         // TODO
         // throw new NotImplementedException();
         string data = await RequestAsync(Post, Route($"/channels/{channelId}/messages"), payload);
-        return JsonConvert.DeserializeObject<Message>(data)!;
+        var message = JsonConvert.DeserializeObject<Message>(data)!;
+        SetMessageValues([message]);
+        return message;
     }
 
     #endregion
@@ -336,11 +346,11 @@ internal class Rest
 
     #region GUILD
 
-    private void SetGuildValues(Guild guild)
+    internal void SetGuildValues(Guild guild)
     {
         guild.Bot = _bot;
-        if (_bot.GetGuild(guild.Id) is { } g)
-            guild.Self = g.Self;
+        SetEmojiValues(guild._emojis, guild.Id);
+        SetRoleValues(guild._roles, guild.Id);
     }
 
     // Returns the guild object for the given id. If with_counts is set to true, this endpoint will also return

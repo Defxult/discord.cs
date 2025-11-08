@@ -315,11 +315,11 @@ public class Guild : IEquatable<Guild>
     /// Your bot instance.
     /// </summary>
     public Bot Bot { get; internal set; }
-    
+
     /// <summary>
     /// Your bots member object for this guild.
     /// </summary>
-    public Member Self { get; internal set; }
+    public Member Self => _members.First(member => member.Id == Bot.User!.Id);
     
     /// <summary>
     /// When the guild was last chunked, or <c>null</c> if never. This refers to when the chunk was initiated, not when
@@ -333,6 +333,11 @@ public class Guild : IEquatable<Guild>
     /// </summary>
     public IReadOnlyCollection<SoundboardSound> SoundboardSounds => _soundboardSounds;
     internal readonly HashSet<SoundboardSound> _soundboardSounds = [];
+
+    /// <summary>
+    /// All cached messages that were sent in this guild.
+    /// </summary>
+    public IEnumerable<Message> Messages => Bot.Messages.Where(m => m.GuildId == Id);
     
     #endregion
     
@@ -982,7 +987,6 @@ public class Guild : IEquatable<Guild>
             var converted = DiscordGatewayClient.DeserializeWithNewtonsoft<List<Member>>(members);
             Bot._rest.SetMemberValues(converted, Id);
             _members.UnionWith(converted);
-            Self = _members.First(m => m.Id == botId);
         }
         else
         {
@@ -997,18 +1001,53 @@ public class Guild : IEquatable<Guild>
                 var userId = element.GetProperty("user").GetProperty("id");
                 if (Convert.ToUInt64(userId.ToString()) != Bot.User?.Id)
                     continue;
-                Self = DiscordGatewayClient.DeserializeWithNewtonsoft<Member>(element);
-                Bot._rest.SetMemberValues([Self], Id);
-                _members.Add(Self);
+                var self = DiscordGatewayClient.DeserializeWithNewtonsoft<Member>(element);
+                Bot._rest.SetMemberValues([self], Id);
+                _members.Add(self);
                 break;
             }
         }
     }
     
-    // TODO
-    internal void Update(JsonElement element)
+    // Updates the guild information via GUILD_UPDATE (or GUILD_CREATE if already in cache).
+    internal void Update(Guild updated)
     {
-        throw new NotImplementedException();
+        Name = updated.Name;
+        _icon = updated._icon;
+        _splash = updated._splash;
+        _discoverySplash = updated._discoverySplash;
+        OwnerId = updated.OwnerId;
+        AfkChannelId = updated.AfkChannelId;
+        AfkTimeout = updated.AfkTimeout;
+        WidgetEnabled = updated.WidgetEnabled;
+        WidgetChannelId = updated.WidgetChannelId;
+        VerificationLevel = updated.VerificationLevel;
+        DefaultMessageNotificationsLevel = updated.DefaultMessageNotificationsLevel;
+        ExplicitContentFilterLevel = updated.ExplicitContentFilterLevel;
+        _roles = updated._roles;
+        _emojis = updated._emojis;
+        _features = updated._features;
+        MfaLevel = updated.MfaLevel;
+        SystemChannelId = updated.SystemChannelId;
+        _systemChannelFlags = updated._systemChannelFlags;
+        RulesChannelId = updated.RulesChannelId;
+        MaxPresences = updated.MaxPresences;
+        MaxMembers = updated.MaxMembers;
+        VanityUrlCode = updated.VanityUrlCode;
+        Description = updated.Description;
+        _banner = updated._banner;
+        _premiumTier = updated._premiumTier;
+        PremiumSubscriptionCount = updated.PremiumSubscriptionCount;
+        _locale = updated._locale;
+        PublicUpdatesChannelId = updated.PublicUpdatesChannelId;
+        MaxVideoChannelUsers = updated.MaxVideoChannelUsers;
+        MaxStageVideoChannelUsers = updated.MaxStageVideoChannelUsers;
+        WelcomeScreen = updated.WelcomeScreen;
+        NsfwLevel = updated.NsfwLevel;
+        _stickers = updated._stickers;
+        PremiumProgressBarEnabled = updated.PremiumProgressBarEnabled;
+        SafetyAlertsChannelId = updated.SafetyAlertsChannelId;
+        IncidentsData = updated.IncidentsData;
     }
     
     internal static HashSet<GuildFeature> ParseFeatures(ICollection<string> features)
