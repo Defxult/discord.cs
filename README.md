@@ -4,7 +4,7 @@
     <img src="https://i.imgur.com/Ga58T1q.png" width="550" height="300">
 </p>
 
-<p align="center">Decided to try and tackle this for fun. We'll see where it goes 😛</p>
+<p align="center">An in development Discord API library written in C#.</p>
 <p align="center">Discord: https://discord.gg/6TNJHcGRYv</p>
 
 <p align="center">
