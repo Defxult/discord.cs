@@ -79,7 +79,7 @@ public class Bot
         _messageCacheTimer = new Timer(_ =>
         {
             if (_cachedMessages.Count > 0)
-                _cachedMessages.RemoveWhere(m => m._expiration >= DateTime.UtcNow);
+                _cachedMessages.RemoveWhere(m => DateTime.UtcNow >= m._expiration);
         }, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
     }
     
