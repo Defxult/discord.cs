@@ -109,7 +109,24 @@ public class Message : IEquatable<Message>
     /// <summary>
     /// Guild this message belongs to. Can be <c>null</c> if it's ephemeral or direct message.
     /// </summary>
-    public Guild? Guild => GuildId.HasValue ? Bot.GetGuild(GuildId.Value) : null; 
+    public Guild? Guild => GuildId.HasValue ? Bot.GetGuild(GuildId.Value) : null;
+
+    /// <summary>
+    /// Channel the message was sent in.
+    /// </summary>
+    public Messageable? Channel
+    {
+        get
+        {
+            if (Bot.GetChannel(ChannelId) is { } gc) 
+                return (Messageable)gc;
+            if (Bot.GetThread(ChannelId) is { } thread)
+                return thread;
+            if (Bot.GetDmChannel(ChannelId) is { } dm) 
+                return dm;
+            return null;
+        }
+    }
     
     internal DateTime _expiration;
 

@@ -63,17 +63,34 @@ public class Bot
     /// </summary>
     public CacheManager CacheManager { get; set; }
     
+    /// <summary>
+    /// Direct messages (channels) the bot has received.
+    /// </summary>
+    public IReadOnlyCollection<DmChannel> DmChannels => _dmChannels;
+    internal readonly List<DmChannel> _dmChannels = [];
+    
     // TODO
     public int ShardId { get; }
 
     internal readonly Rest _rest;
 
+    /// <summary>
+    /// Initializes a client that interacts with the Discord API.
+    /// </summary>
+    /// <param name="intents">Gateway intents.</param>
+    /// <param name="shardId">Bot shard.</param>
+    /// <param name="cacheManager">Controls what will be cached. If <c>null</c>, defaults to <see cref="CacheManager.Default"/>.
+    /// </param>
+    /// <exception cref="DiscordException">Bot token was not set prior to instantiation.</exception>
     public Bot(Intents intents, int shardId = 0, CacheManager? cacheManager = null)
     {
         if (Token is null) throw new DiscordException("Bot token not set");
         Intents = intents;
         ShardId = shardId;
+        
+        // This needs to be before the instantiation of the gateway.
         _rest = new Rest(this);
+        
         _gateway = new DiscordGatewayClient(this, intents);
         CacheManager = cacheManager ?? CacheManager.Default;
         _messageCacheTimer = new Timer(_ =>
@@ -84,6 +101,47 @@ public class Bot
     }
     
     #region PUBLIC
+
+    /// <summary>
+    /// Retrieve a DM channel from the cache.
+    /// </summary>
+    /// <param name="id">DM channel ID.</param>
+    /// <returns>The DM channel matching the given ID, or <c>null</c> if not found.</returns>
+    public DmChannel? GetDmChannel(ulong id) =>
+        _dmChannels.FirstOrDefault(c => c.Id == id);
+    
+    /// <summary>
+    /// Retrieve a guild channel from the cache.
+    /// </summary>
+    /// <param name="id">Channel ID.</param>
+    /// <returns>The guild channel matching the given ID, or <c>null</c> if not found.</returns>
+    public IGuildChannel? GetChannel(ulong id)
+    {
+        foreach (var guild in _guilds)
+            if (guild.GetChannel(id) is { } channel)
+                return channel;
+        return null;
+    }
+
+    /// <summary>
+    /// Channels the bot has access to.
+    /// </summary>
+    /// <returns>All channels in every guild.</returns>
+    public IReadOnlyCollection<IGuildChannel> GetChannels() => 
+        _guilds.SelectMany(g => g.Channels).ToList();
+
+    /// <summary>
+    /// Retrieve a thread channel from the cache.
+    /// </summary>
+    /// <param name="id">Channel ID.</param>
+    /// <returns>The thread channel matching the given ID, or <c>null</c> if not found.</returns>
+    public ThreadChannel? GetThread(ulong id)
+    {
+        foreach (var guild in _guilds)
+            if (guild.GetThread(id) is { } thread)
+                return thread;
+        return null;
+    }
 
     /// <summary>
     /// Requests the bot's application information.

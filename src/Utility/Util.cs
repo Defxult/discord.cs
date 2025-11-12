@@ -383,13 +383,15 @@ public enum TimestampStyle
 
 internal static class Dev
 {
+    internal static string Boundary => Guid.NewGuid().ToString().Replace("-", string.Empty);
+    
     internal static void Log(string message, bool timestamp = true)
     {
         if (Environment.GetEnvironmentVariable("##set_logging##") is null) return;
         var m = timestamp ? $"[{DateTime.Now:MM-dd-yyyy HH:mm:ss.fff}] {message}" : message;
         Console.WriteLine(m);
     }
-
+    
     internal static void PrettyPrint(string json)
     {
         var parsed = JToken.Parse(json);

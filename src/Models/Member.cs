@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 namespace Discord.Models;
 
 /// <summary>
-/// Represents a Discord guild member.
+/// Represents a <see cref="Guild"/> member.
 /// </summary>
 public class Member : IEquatable<Member>
 {

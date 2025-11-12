@@ -69,27 +69,34 @@ internal class Rest
 
     #endregion
 
-    #region MESSAGE
+    #region CHANNEL
 
-    internal void SetMessageValues(IEnumerable<Message> message)
+    private void SetChannelValues(Guild guild)
     {
-        foreach (var m in message)
+        var messageables = new List<GuildChannelMessageable>();
+        messageables.AddRange(guild.TextChannels);
+        messageables.AddRange(guild.AnnouncementChannels);
+        messageables.AddRange(guild.VoiceChannels);
+        messageables.AddRange(guild.StageChannels);
+        messageables.AddRange(guild.Threads);
+        messageables.ForEach(gcm =>
         {
-            m.Bot = _bot;
+            gcm.GuildId = guild.Id;
+            gcm.Bot = _bot;
+        });
+        
+        // Non-messageables
+        foreach (var c in guild.CategoryChannels) { c.GuildId = guild.Id;
+            c.Bot = _bot;
+        }
+        foreach (var c in guild.ForumChannels) { c.GuildId = guild.Id;
+            c.Bot = _bot;
+        }
+        foreach (var non in guild.MediaChannels) { non.GuildId = guild.Id;
+            non.Bot = _bot;
         }
     }
-
-    // DOCS: https://discord.com/developers/docs/resources/message#create-message
-    internal async Task<Message> CreateMessageAsync(ulong channelId, object payload)
-    {
-        // TODO
-        // throw new NotImplementedException();
-        string data = await RequestAsync(Post, Route($"/channels/{channelId}/messages"), payload);
-        var message = JsonConvert.DeserializeObject<Message>(data)!;
-        SetMessageValues([message]);
-        return message;
-    }
-
+    
     #endregion
 
     #region EMOJI
@@ -351,6 +358,7 @@ internal class Rest
         guild.Bot = _bot;
         SetEmojiValues(guild._emojis, guild.Id);
         SetRoleValues(guild._roles, guild.Id);
+        SetChannelValues(guild);
     }
 
     // Returns the guild object for the given id. If with_counts is set to true, this endpoint will also return
@@ -381,6 +389,16 @@ internal class Rest
         var guild = JsonConvert.DeserializeObject<Guild>(data)!;
         SetGuildValues(guild);
         return guild;
+    }
+    
+    // Returns a list of guild channel objects. Does not include threads.
+    // https://discord.com/developers/docs/resources/guild#get-guild-channels
+    internal async Task<List<IGuildChannel>> GetGuildChannelsAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/channels"));
+        var channelObjs = JsonConvert.DeserializeObject<List<JSON>>(data)!;
+        var parsed = IGuildChannel.ParseAll(channelObjs, []);
+        return parsed.channels;
     }
 
     internal void SetRoleValues(IEnumerable<Role> roles, ulong guildId)
@@ -807,6 +825,27 @@ internal class Rest
 
     #endregion
     
+    #region MESSAGE
+
+    internal void SetMessageValues(IEnumerable<Message> message)
+    {
+        foreach (var m in message)
+        {
+            m.Bot = _bot;
+        }
+    }
+
+    // DOCS: https://discord.com/developers/docs/resources/message#create-message
+    internal async Task<Message> CreateMessageAsync(ulong channelId, MultipartFormDataContent form)
+    {
+        string data = await RequestAsync(Post, Route($"/channels/{channelId}/messages"), form);
+        var message = JsonConvert.DeserializeObject<Message>(data)!;
+        SetMessageValues([message]);
+        return message;
+    }
+
+    #endregion
+    
     #region STICKER
 
     // Returns a sticker object for the given sticker ID.
@@ -1006,6 +1045,23 @@ internal class Rest
     {
         await RequestAsync(Delete, Route($"/users/@me/guilds/{guildId}"));
     }
+    
+    // Create a new DM channel with a user. Returns a DM channel object (if one already exists, it will be returned instead).
+    // https://discord.com/developers/docs/resources/user#create-dm
+    internal async Task<DmChannel> CreateDmAsync(ulong userId)
+    {
+        var payload = new JSON { { "recipient_id", userId } };
+        string data = await RequestAsync(Post, Route("/users/@me/channels"), payload);
+        var channel = JsonConvert.DeserializeObject<DmChannel>(data)!;
+        channel.Bot = _bot;
+        return channel;
+    }
+
+    #endregion
+
+    #region VOICE
+
+    
 
     #endregion
     

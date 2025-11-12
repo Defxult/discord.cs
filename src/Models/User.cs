@@ -78,6 +78,12 @@ public class User : IEquatable<User>
     /// </summary>
     [JsonProperty("collectibles")]
     public Collectibles? Collectibles { get; private set; }
+    
+    /// <summary>
+    /// The user’s primary guild.
+    /// </summary>
+    [JsonProperty("primary_guild")]
+    public PrimaryGuild? PrimaryGuild { get; private set; }
 
     #region CUSTOM
 
@@ -174,6 +180,40 @@ public class ClientUser : User
             if (loc.GetDescription() == locale) Locale = loc; break;
         }
     }
+}
+
+/// <summary>
+/// Represents a <see cref="User"/>s primary guild.
+/// </summary>
+public record PrimaryGuild
+{
+    /// <summary>
+    /// ID of the user’s primary guild.
+    /// </summary>
+    [JsonProperty("identity_guild_id")]
+    public ulong? Id { get; init; }
+
+    /// <summary>
+    /// Whether the user is displaying the primary guild’s tag. This can be <c>null</c> if the guild no longer
+    /// supports tags. This will be <c>false</c> if the user manually removes their tag.
+    /// </summary>
+    [JsonProperty("identity_enabled")]
+    public bool? IsEnabled { get; init; }
+
+    /// <summary>
+    /// Text of the user’s guild tag. Limited to 4 characters.
+    /// </summary>
+    [JsonProperty("tag")]
+    public string? Tag { get; init; }
+
+    /// <summary>
+    /// The guild tag badge.
+    /// </summary>
+    public Media? Badge =>
+        _badgeHash is not null ? new Media(_badgeHash, $"/guild-tag-badges/{Id}/{_badgeHash}") : null;
+    [JsonProperty("badge")] private readonly string? _badgeHash;
+    
+    private PrimaryGuild() { }
 }
 
 /// <summary>

@@ -44,7 +44,7 @@ public record Shard
 public sealed class DiscordGatewayClient
 {
     #region EVENTS
-
+    
     #region GUILD
 
     /// <summary>
@@ -480,6 +480,29 @@ public sealed class DiscordGatewayClient
                         var createdMessage = DeserializeWithNewtonsoft<Message>(D());
                         _rest.SetMessageValues([createdMessage]);
                         
+                        // Update the last_message_id for that channel.
+                        if (createdMessage.GuildId is not null)
+                        {
+                            var cmChannel = createdMessage.Guild!.GetChannel(createdMessage.ChannelId)!;
+                            if (cmChannel is Messageable messageable)
+                                messageable.LastMessageId = createdMessage.Id;
+                            // Else: it's a non-messageable channel, AKA a ForumChannel etc
+                        }
+                        else
+                        {
+                            // Since GuildId is null, it's a direct message so create the DmChannel or if found, update
+                            // its values.
+                            if (_bot.GetDmChannel(createdMessage.ChannelId) is not { } dmChannel)
+                            {
+                                var createdDm = await _bot._rest.CreateDmAsync(createdMessage.Author.Id);
+                                createdDm.LastMessageId = createdMessage.Id;
+                                _bot._dmChannels.Add(createdDm);
+                            }
+                            else
+                            {
+                                dmChannel.LastMessageId = createdMessage.Id;
+                            }
+                        }
                         _bot.CacheMessage(createdMessage);
                         OnMessageCreate?.Invoke(this, createdMessage);
                         break;

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Threading.Channels;
 using Discord.Utility;
 using Discord.Net;
 using Newtonsoft.Json;
@@ -16,8 +17,7 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Guild ID.
     /// </summary>
-    [JsonProperty("id")]
-    public ulong Id { get; init; }
+    public ulong Id { get; }
 
     /// <summary>
     /// Guild name.
@@ -306,7 +306,19 @@ public class Guild : IEquatable<Guild>
     /// </summary>
     [JsonIgnore] public IReadOnlySet<Member> Members => _members;
     internal readonly HashSet<Member> _members = [];
-
+    
+    /// <summary>
+    /// All visible channels in the guild.
+    /// </summary>
+    public IReadOnlyCollection<IGuildChannel> Channels => _channels;
+    internal readonly List<IGuildChannel> _channels;
+    
+    /// <summary>
+    /// All visible threads in the guild.
+    /// </summary>
+    public IReadOnlyCollection<ThreadChannel> Threads => _threads;
+    internal readonly List<ThreadChannel> _threads;
+    
     #endregion
     
     #region CUSTOM
@@ -338,17 +350,80 @@ public class Guild : IEquatable<Guild>
     /// All cached messages that were sent in this guild.
     /// </summary>
     public IEnumerable<Message> Messages => Bot.Messages.Where(m => m.GuildId == Id);
+
+    /// <summary>
+    /// Text channels in the guild.
+    /// </summary>
+    public IReadOnlyCollection<TextChannel> TextChannels =>
+        (from c in _channels
+        where c.Type == ChannelType.GuildText
+        select (TextChannel)c).ToList();
+
+    /// <summary>
+    /// Announcement channels in the guild.
+    /// </summary>
+    public IReadOnlyCollection<AnnouncementChannel> AnnouncementChannels =>
+        (from c in _channels
+        where c.Type == ChannelType.GuildAnnouncement
+        select (AnnouncementChannel)c).ToList();
+
+    /// <summary>
+    /// Voice channels in the guild.
+    /// </summary>
+    public IReadOnlyCollection<VoiceChannel> VoiceChannels =>
+        (from c in _channels
+        where c.Type == ChannelType.GuildVoice
+        select (VoiceChannel)c).ToList();
+    
+    /// <summary>
+    /// Stage channels in the guild.
+    /// </summary>
+    public IReadOnlyCollection<StageChannel> StageChannels =>
+        (from c in _channels
+        where c.Type == ChannelType.GuildStageVoice
+        select (StageChannel)c).ToList();
+    
+    /// <summary>
+    /// Forum channels in the guild.
+    /// </summary>
+    public IReadOnlyCollection<ForumChannel> ForumChannels =>
+        (from c in _channels
+        where c.Type == ChannelType.GuildForum
+        select (ForumChannel)c).ToList();
+    
+    /// <summary>
+    /// Forum channels in the guild.
+    /// </summary>
+    public IReadOnlyCollection<MediaChannel> MediaChannels =>
+        (from c in _channels
+        where c.Type == ChannelType.GuildMedia
+        select (MediaChannel)c).ToList();
+    
+    /// <summary>
+    /// Category channels in the guild.
+    /// </summary>
+    public IReadOnlyCollection<CategoryChannel> CategoryChannels =>
+        (from c in _channels
+        where c.Type == ChannelType.GuildCategory
+        select (CategoryChannel)c).ToList();
     
     #endregion
-    
-    private Guild() { }
-    
+
+    [JsonConstructor]
+    private Guild(ulong id, List<JSON> channels, List<JSON> threads)
+    {
+        Id = id;
+        var parsed = IGuildChannel.ParseAll(channels, threads);
+        _channels = parsed.channels;
+        _threads = parsed.threads;
+    }
+
     public override bool Equals(object? other) => other is Guild guild && Equals(guild);
     public bool Equals(Guild? other) => Id == other?.Id;
     public override int GetHashCode() => Id.GetHashCode();
     
     #region PUBLIC
-
+    
     /// <summary>
     /// Edit the guild.
     /// </summary>
@@ -357,6 +432,30 @@ public class Guild : IEquatable<Guild>
     /// <remarks>Requires <see cref="Permission.ManageGuild"/>.</remarks>
     public async Task EditAsync(GuildEdit edit, string? reason = null)
         => await Bot._rest.ModifyGuildAsync(Id, edit, reason);
+    
+    /// <summary>
+    /// Requests all channels in the guild.
+    /// </summary>
+    /// <returns> All channels in the guild the bot has access to.</returns>
+    /// <remarks>It's generally preferred to use <see cref="Channels"/> unless this is needed.</remarks>
+    public async Task<ICollection<IGuildChannel>> RequestChannelsAsync() =>
+        await Bot._rest.GetGuildChannelsAsync(Id);
+    
+    /// <summary>
+    /// Retrieve a channel from the cache.
+    /// </summary>
+    /// <param name="id">Channel ID.</param>
+    /// <returns>The channel matching the given ID, or <c>null</c> if not found.</returns>
+    public IGuildChannel? GetChannel(ulong id) 
+        => _channels.FirstOrDefault(c => c.Id == id);
+    
+    /// <summary>
+    /// Retrieve a thread from the cache.
+    /// </summary>
+    /// <param name="id">Thread ID.</param>
+    /// <returns>The thread matching the given ID, or <c>null</c> if not found.</returns>
+    public ThreadChannel? GetThread(ulong id) =>
+        _threads.FirstOrDefault(t => t.Id == id);
 
     /// <summary>
     /// Requests all emojis in the guild.
@@ -1292,9 +1391,9 @@ public enum SoundboardSoundFormat
 /// <summary>
 /// Represents the values that can be edited for a <see cref="Guild"/>s incident action.
 /// </summary>
-public struct IncidentActionsEdit
+public readonly struct IncidentActionsEdit
 {
-    internal Dictionary<string, TimeSpan?> _payload = [];
+    internal readonly Dictionary<string, TimeSpan?> _payload = [];
     
     /// <summary>
     /// Initializes a new incident actions edit instance.
@@ -1815,9 +1914,9 @@ public record VoiceState
 /// <summary>
 /// Represents the values that can be edited for a <see cref="Guild"/>. 
 /// </summary>
-public struct GuildEdit
+public readonly struct GuildEdit
 {
-    internal JSON _payload = [];
+    internal readonly JSON _payload = [];
     private readonly HashSet<string> _features = [];
 
     /// <summary>
@@ -2430,9 +2529,9 @@ public class ScheduledEvent : IEquatable<ScheduledEvent>
 /// <summary>
 /// Represents the values that can be edited for a <see cref="ScheduledEvent"/>. 
 /// </summary>
-public struct ScheduledEventEdit
+public readonly struct ScheduledEventEdit
 {
-    internal JSON _payload = [];
+    internal readonly JSON _payload = [];
     
     /// <summary>
     /// Initializes a new scheduled event edit instance.
