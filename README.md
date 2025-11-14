@@ -5,12 +5,15 @@
 </p>
 
 <p align="center">An in development Discord API library written in C#.</p>
-<p align="center">Discord: https://discord.gg/6TNJHcGRYv</p>
 
 <p align="center">
     <img src="https://img.shields.io/static/v1?label=version&style=for-the-badge&message=0.0.1-alpha&color=c869ff">
     <!-- <a href="https://google.com"><img src="https://img.shields.io/static/v1?label=guide&style=for-the-badge&message=gitbook&color=5865f2"></a> -->
 </p>
+
+Discord: https://discord.gg/6TNJHcGRYv
+
+NuGet: https://www.nuget.org/packages/Discord.cs/
 
 ## Basic Usage
 ```csharp
