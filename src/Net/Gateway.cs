@@ -106,6 +106,42 @@ public sealed class DiscordGatewayClient
     public event EventHandler<(ulong guildId, ulong soundId, SoundboardSound? sound)>? OnGuildSoundboardSoundDelete;
     
     #endregion
+
+    #region THREADS
+
+    /// <summary>
+    /// Dispatched when a <see cref="ThreadChannel"/> is created/when added to an existing private thread. Contains the
+    /// thread that was created.
+    /// </summary>
+    /// <remarks>
+    /// The <c>ThreadChannel</c> value provided to the event handler contains the thread that was updated. Requires
+    /// <see cref="Intents.Guilds"/>.
+    /// </remarks>
+    public event EventHandler<ThreadChannel>? OnThreadCreate;
+    
+    /// <summary>
+    /// Dispatched when a <see cref="ThreadChannel"/> is updated. Contains the thread that was updated.
+    /// </summary>
+    /// <remarks>
+    /// The <c>ThreadChannel</c> value provided to the event handler contains the thread that was updated. Requires
+    /// <see cref="Intents.Guilds"/>.
+    /// </remarks>
+    public event EventHandler<ThreadChannel>? OnThreadUpdate;
+    
+    /// <summary>
+    /// Dispatched when a <see cref="ThreadChannel"/> is deleted.
+    /// </summary>
+    /// <remarks>
+    /// The values provided to the event handler contains the following:
+    /// <list type="bullet">
+    ///     <item><c>guildId</c> ID of the guild the thread was deleted from.</item>
+    ///     <item><c>threadId</c> ID of the thread that was deleted.</item>
+    /// </list>
+    /// Requires <see cref="Intents.Guilds"/>.
+    /// </remarks>
+    public event EventHandler<(ulong guildId, ulong threadId)>? OnThreadDelete;
+
+    #endregion
     
     #endregion
     
@@ -450,7 +486,7 @@ public sealed class DiscordGatewayClient
     internal static JsonElement GetElementValue(JsonElement element, string key) => 
         element.GetProperty(key);
     
-    internal static T DeserializeWithNewtonsoft<T>(JsonElement element)
+    internal static T Deserialize<T>(JsonElement element)
     {
         string json = element.GetRawText();
         return JsonConvert.DeserializeObject<T>(json)!;
@@ -460,6 +496,7 @@ public sealed class DiscordGatewayClient
     private async Task HandleDiscordEventAsync(GatewayPayload payload)
     {
         UpdateSequence(payload);
+        var d = D();
         switch (payload.Op)
         {
             case 0: // Dispatch (this contains every common event)
@@ -471,13 +508,13 @@ public sealed class DiscordGatewayClient
                         Dev.Log($"[GW] READY received, session ID: {_sessionId} - Resume URL: {_resumeGatewayUrl}");
                         
                         var userElement = GetElementValue(D(), "user");
-                        _bot.User = DeserializeWithNewtonsoft<User>(userElement);
+                        _bot.User = Deserialize<User>(userElement);
                         break;
                     case "RESUMED":
                         Dev.Log("[GW] Successfully resumed");
                         break;
                     case "MESSAGE_CREATE":
-                        var createdMessage = DeserializeWithNewtonsoft<Message>(D());
+                        var createdMessage = Deserialize<Message>(D());
                         _rest.SetMessageValues([createdMessage]);
                         
                         // Update the last_message_id for that channel.
@@ -507,7 +544,7 @@ public sealed class DiscordGatewayClient
                         OnMessageCreate?.Invoke(this, createdMessage);
                         break;
                     case "GUILD_CREATE":
-                        var createdGuild = DeserializeWithNewtonsoft<Guild>(D());
+                        var createdGuild = Deserialize<Guild>(D());
                         _rest.SetGuildValues(createdGuild);
                         
                         // If the guild is already in cache, this is most likely being dispatched again due to it
@@ -529,7 +566,7 @@ public sealed class DiscordGatewayClient
                         }
                         break;
                     case "GUILD_UPDATE":
-                        var updatedGuild = DeserializeWithNewtonsoft<Guild>(D());
+                        var updatedGuild = Deserialize<Guild>(D());
                         if (_bot.GetGuild(updatedGuild.Id) is { } fug)
                         {
                             fug.Update(updatedGuild);
@@ -547,20 +584,20 @@ public sealed class DiscordGatewayClient
                     case "GUILD_MEMBERS_CHUNK":
                         var chunkedGuildId = Convert.ToUInt64(GetElementValue(D(), "guild_id").ToString());
                         var chunkedMembers = GetElementValue(D(), "members");
-                        var convertedChunkedMembers = DeserializeWithNewtonsoft<List<Member>>(chunkedMembers);
+                        var convertedChunkedMembers = Deserialize<List<Member>>(chunkedMembers);
                         _bot._rest.SetMemberValues(convertedChunkedMembers, chunkedGuildId);
                         if (_bot.GetGuild(chunkedGuildId) is { } chunkedGuild)
                             chunkedGuild._members.UnionWith(convertedChunkedMembers);
                         break;
                     case "GUILD_SOUNDBOARD_SOUND_CREATE":
-                        var gssCreate = DeserializeWithNewtonsoft<SoundboardSound>(D());
+                        var gssCreate = Deserialize<SoundboardSound>(D());
                         _bot._rest.SetSoundboardSoundValues([gssCreate]);
                         if (_bot.GetGuild(gssCreate.GuildId!.Value) is { } gscGuild)
                             gscGuild._soundboardSounds.Add(gssCreate);
                         OnGuildSoundboardSoundCreate?.Invoke(this, gssCreate);
                         break;
                     case "GUILD_SOUNDBOARD_SOUND_UPDATE":
-                        var gssUpdate = DeserializeWithNewtonsoft<SoundboardSound>(D());
+                        var gssUpdate = Deserialize<SoundboardSound>(D());
                         _bot._rest.SetSoundboardSoundValues([gssUpdate]);
                         if (_bot.GetGuild(gssUpdate.GuildId!.Value) is { } gsuGuild)
                         {
@@ -579,6 +616,53 @@ public sealed class DiscordGatewayClient
                             gsdGuild._soundboardSounds.RemoveWhere(s => s.SoundId == gsdSoundId);
                         }
                         OnGuildSoundboardSoundDelete?.Invoke(this, (gsdGuildId, gsdSoundId, gsdSound));
+                        break;
+                    case "THREAD_CREATE":
+                        var tcGuildId = Deserialize<ulong>(GetElementValue(D(), "guild_id"));
+                        var createdThread = Deserialize<ThreadChannel>(D());
+                        if (_bot.GetGuild(tcGuildId) is { } tcGuild)
+                            _bot._rest.SetThreadValues([createdThread], tcGuild);
+                        
+                        // Threads always have a parent_id, whether it's a regular text channel or a forum; so update the
+                        // last_message_id (last thread ID) for the forum channel.
+                        if (createdThread.Guild.GetChannel(createdThread.ParentId!.Value) is ForumChannel tcfc)
+                            tcfc.LastThreadId = createdThread.Id;
+                            
+                        createdThread.Guild._threads.Add(createdThread);
+                        OnThreadCreate?.Invoke(this, createdThread);
+                        break;
+                    case "THREAD_UPDATE":
+                        var tuGuildId = Deserialize<ulong>(GetElementValue(D(), "guild_id"));
+                        var updatedThread = Deserialize<ThreadChannel>(D());
+                        if (_bot.GetGuild(tuGuildId) is { } tuGuild)
+                        {
+                            _bot._rest.SetThreadValues([updatedThread], tuGuild);
+                            if (tuGuild.GetThread(updatedThread.Id) is { } currentThread)
+                            {
+                                var membersCopy = currentThread._members.ToList();
+                                currentThread = updatedThread;
+                                currentThread._members.AddRange(membersCopy);
+                            }
+                        }
+                        OnThreadUpdate?.Invoke(this, updatedThread);
+                        break;
+                    case "THREAD_DELETE":
+                        var tdGuildId = Deserialize<ulong>(GetElementValue(d, "guild_id"));
+                        var tdThreadId = Deserialize<ulong>(GetElementValue(d, "id"));
+                        if (_bot.GetGuild(tdGuildId) is { } tdg)
+                            if (tdg.GetThread(tdThreadId) is { } tdt)
+                            {
+                                tdg._threads.Remove(tdt);
+                                OnThreadDelete?.Invoke(this, (tdGuildId, tdThreadId));
+                            }
+                        break;
+                    case "THREAD_LIST_SYNC":
+                        // TODO
+                        var tlsGuildId = Deserialize<ulong>(GetElementValue(d, "guild_id"));
+                        break;
+                    case "THREAD_MEMBERS_UPDATE":
+                        // TODO
+                        var tmuGuildId = Deserialize<ulong>(GetElementValue(d, "guild_id"));
                         break;
                 }
                 break;

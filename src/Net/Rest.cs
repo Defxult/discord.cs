@@ -71,6 +71,16 @@ internal class Rest
 
     #region CHANNEL
 
+    internal void SetThreadValues(IEnumerable<ThreadChannel> threads, Guild guild)
+    {
+        foreach (var t in threads)
+        {
+            t.Guild = guild;
+            t.GuildId = guild.Id;
+            t.Bot = _bot;
+        }
+    }
+
     private void SetChannelValues(Guild guild)
     {
         var messageables = new List<GuildChannelMessageable>();
@@ -81,19 +91,20 @@ internal class Rest
         messageables.AddRange(guild.Threads);
         messageables.ForEach(gcm =>
         {
+            gcm.Guild = guild;
             gcm.GuildId = guild.Id;
             gcm.Bot = _bot;
         });
         
         // Non-messageables
         foreach (var c in guild.CategoryChannels) { c.GuildId = guild.Id;
-            c.Bot = _bot;
+            c.Guild = guild; c.Bot = _bot;
         }
         foreach (var c in guild.ForumChannels) { c.GuildId = guild.Id;
-            c.Bot = _bot;
+            c.Guild = guild; c.Bot = _bot;
         }
-        foreach (var non in guild.MediaChannels) { non.GuildId = guild.Id;
-            non.Bot = _bot;
+        foreach (var c in guild.MediaChannels) { c.GuildId = guild.Id;
+            c.Guild = guild; c.Bot = _bot;
         }
     }
     
@@ -181,7 +192,7 @@ internal class Rest
     {
         string data = await RequestAsync(Get, Route($"/applications/{applicationId}/emojis"));
         var element = JsonDocument.Parse(data).RootElement.GetProperty("items");
-        var emojis = DiscordGatewayClient.DeserializeWithNewtonsoft<List<Emoji>>(element);
+        var emojis = DiscordGatewayClient.Deserialize<List<Emoji>>(element);
         SetEmojiValues(emojis, null);
         return emojis;
     }
@@ -345,7 +356,7 @@ internal class Rest
         var doc = JsonDocument.Parse(data);
         var users = new List<User>();
         foreach (var ele in doc.RootElement.EnumerateArray())
-            users.Add(DiscordGatewayClient.DeserializeWithNewtonsoft<User>(ele.GetProperty("user")));
+            users.Add(DiscordGatewayClient.Deserialize<User>(ele.GetProperty("user")));
         return users;
     }
 
@@ -359,6 +370,7 @@ internal class Rest
         SetEmojiValues(guild._emojis, guild.Id);
         SetRoleValues(guild._roles, guild.Id);
         SetChannelValues(guild);
+        SetThreadValues(guild._threads, guild);
     }
 
     // Returns the guild object for the given id. If with_counts is set to true, this endpoint will also return
@@ -612,8 +624,8 @@ internal class Rest
     {
         string data = await RequestAsync(Post, Route($"/guilds/{guildId}/bulk-ban"), payload, reason);
         var doc = JsonDocument.Parse(data);
-        var bannedUsers = DiscordGatewayClient.DeserializeWithNewtonsoft<List<ulong>>(doc.RootElement.GetProperty("banned_users"));
-        var failedUsers = DiscordGatewayClient.DeserializeWithNewtonsoft<List<ulong>>(doc.RootElement.GetProperty("failed_users"));
+        var bannedUsers = DiscordGatewayClient.Deserialize<List<ulong>>(doc.RootElement.GetProperty("banned_users"));
+        var failedUsers = DiscordGatewayClient.Deserialize<List<ulong>>(doc.RootElement.GetProperty("failed_users"));
         return (bannedUsers, failedUsers);
     }
     
@@ -982,7 +994,7 @@ internal class Rest
         string data = await RequestAsync(Get, Route($"/guilds/{guildId}/soundboard-sounds"));
         var doc = JsonDocument.Parse(data);
         var element = doc.RootElement.GetProperty("items");
-        var sounds = DiscordGatewayClient.DeserializeWithNewtonsoft<List<SoundboardSound>>(element);
+        var sounds = DiscordGatewayClient.Deserialize<List<SoundboardSound>>(element);
         SetSoundboardSoundValues(sounds);
         return sounds;
     }

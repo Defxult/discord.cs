@@ -1083,7 +1083,7 @@ public class Guild : IEquatable<Guild>
         
         if (Bot.CacheManager.Members)
         {
-            var converted = DiscordGatewayClient.DeserializeWithNewtonsoft<List<Member>>(members);
+            var converted = DiscordGatewayClient.Deserialize<List<Member>>(members);
             Bot._rest.SetMemberValues(converted, Id);
             _members.UnionWith(converted);
         }
@@ -1100,7 +1100,7 @@ public class Guild : IEquatable<Guild>
                 var userId = element.GetProperty("user").GetProperty("id");
                 if (Convert.ToUInt64(userId.ToString()) != Bot.User?.Id)
                     continue;
-                var self = DiscordGatewayClient.DeserializeWithNewtonsoft<Member>(element);
+                var self = DiscordGatewayClient.Deserialize<Member>(element);
                 Bot._rest.SetMemberValues([self], Id);
                 _members.Add(self);
                 break;

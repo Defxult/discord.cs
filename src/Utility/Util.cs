@@ -87,7 +87,7 @@ public static class Util
     {
         var document = JsonDocument.Parse(json);
         document.RootElement.TryGetProperty(key, out JsonElement element);
-        return DiscordGatewayClient.DeserializeWithNewtonsoft<T>(element);
+        return DiscordGatewayClient.Deserialize<T>(element);
     }
     
     internal static List<T> FromBitfield<T>(int value)

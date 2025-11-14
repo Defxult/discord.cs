@@ -85,7 +85,7 @@ public enum ChannelFlags
     
     /// <summary>
     /// Whether a tag is required to be specified when creating a thread in a <see cref="ForumChannel"/> or
-    /// <see cref="MediaChannel"/>. Tags are specified in 
+    /// <see cref="MediaChannel"/>. Tags are specified in <see cref="ForumChannel.AppliedTags"/>.
     /// </summary>
     RequireTag               = 1 << 4,
     
@@ -137,6 +137,11 @@ public interface IGuildChannel : IChannel
     public ulong GuildId { get; }
     
     /// <summary>
+    /// Guild the channel belongs to.
+    /// </summary>
+    public Guild Guild { get; }
+    
+    /// <summary>
     /// ID of the category the channel belongs to.
     /// </summary>
     public ulong? ParentId { get; }
@@ -159,31 +164,31 @@ public interface IGuildChannel : IChannel
             switch ((ChannelType)value)
             {
                 case ChannelType.GuildText:
-                    var text = DiscordGatewayClient.DeserializeWithNewtonsoft<TextChannel>(channelElement);
+                    var text = DiscordGatewayClient.Deserialize<TextChannel>(channelElement);
                     channels.Add(text);
                     break;
                 case ChannelType.GuildVoice:
-                    var voice = DiscordGatewayClient.DeserializeWithNewtonsoft<VoiceChannel>(channelElement);
+                    var voice = DiscordGatewayClient.Deserialize<VoiceChannel>(channelElement);
                     channels.Add(voice);
                     break;
                 case ChannelType.GuildCategory:
-                    var cat = DiscordGatewayClient.DeserializeWithNewtonsoft<CategoryChannel>(channelElement);
+                    var cat = DiscordGatewayClient.Deserialize<CategoryChannel>(channelElement);
                     channels.Add(cat);
                     break;
                 case ChannelType.GuildAnnouncement:
-                    var announcement = DiscordGatewayClient.DeserializeWithNewtonsoft<AnnouncementChannel>(channelElement);
+                    var announcement = DiscordGatewayClient.Deserialize<AnnouncementChannel>(channelElement);
                     channels.Add(announcement);
                     break;
                 case ChannelType.GuildStageVoice:
-                    var stage = DiscordGatewayClient.DeserializeWithNewtonsoft<StageChannel>(channelElement);
+                    var stage = DiscordGatewayClient.Deserialize<StageChannel>(channelElement);
                     channels.Add(stage);
                     break;
                 case ChannelType.GuildForum:
-                    var forum = DiscordGatewayClient.DeserializeWithNewtonsoft<ForumChannel>(channelElement);
+                    var forum = DiscordGatewayClient.Deserialize<ForumChannel>(channelElement);
                     channels.Add(forum);
                     break;
                 case ChannelType.GuildMedia:
-                    var media = DiscordGatewayClient.DeserializeWithNewtonsoft<MediaChannel>(channelElement);
+                    var media = DiscordGatewayClient.Deserialize<MediaChannel>(channelElement);
                     channels.Add(media);
                     break;
                 default:
@@ -195,7 +200,7 @@ public interface IGuildChannel : IChannel
         var docT = JsonDocument.Parse(JsonConvert.SerializeObject(reg_threads));
         foreach (var threadElement in docT.RootElement.EnumerateArray())
         {
-            var thread = DiscordGatewayClient.DeserializeWithNewtonsoft<ThreadChannel>(threadElement);
+            var thread = DiscordGatewayClient.Deserialize<ThreadChannel>(threadElement);
             threads.Add(thread);
         }
         return (channels, threads);
@@ -270,6 +275,9 @@ public abstract class GuildChannelMessageable : Messageable, IGuildChannel
     /// ID of the guild the channel belongs to.
     /// </summary>
     public ulong GuildId { get; internal set; }
+    
+    /// <inheritdoc/>
+    public Guild Guild { get; internal set; }
     
     /// <summary>
     /// ID of the parent channel the channel belongs to.
@@ -500,6 +508,9 @@ public class ForumChannel : IGuildChannel
     public ulong GuildId { get; internal set; }
     
     /// <inheritdoc/>
+    public Guild Guild { get; internal set; }
+    
+    /// <inheritdoc/>
     [JsonProperty("category_id")]
     public ulong? ParentId { get; internal set; }
     
@@ -553,21 +564,19 @@ public class ForumChannel : IGuildChannel
     /// </summary>
     [JsonProperty("default_forum_layout")]
     public Layout DefaultForumLayout { get; internal set; }
+    
+    /// <summary>
+    /// ID of the last thread that was created.
+    /// </summary>
+    [JsonProperty("last_message_id")]
+    public ulong? LastThreadId { get; internal set; }
 
     #region CUSTOM
 
     /// <summary>
     /// Threads that belong to this channel.
     /// </summary>
-    public IReadOnlyCollection<ThreadChannel> Threads
-    {
-        get
-        {
-            if (Bot.GetGuild(GuildId) is { } guild)
-                return guild.Threads.Where(t => t.ParentId == Id).ToList();
-            return [];
-        }
-    }
+    public IReadOnlyCollection<ThreadChannel> Threads => Guild.Threads.Where(t => t.ParentId == Id).ToList();
 
     #endregion
     
@@ -700,8 +709,20 @@ public class ThreadChannel : GuildChannelMessageable
         ? Util.FromBitfield<ChannelFlags>(_flags.Value)
         : Array.Empty<ChannelFlags>();
     [JsonProperty("flags")] private int? _flags;
-    
-    internal ThreadChannel() { }
+
+    /// <summary>
+    /// Members in the thread.
+    /// </summary>
+    public IReadOnlyCollection<ThreadMember> Members => _members;
+    internal readonly List<ThreadMember> _members = [];
+
+    [JsonConstructor]
+    internal ThreadChannel(ThreadMember? member)
+    {
+        // This member references the bot, think of it as a "SelfThreadMember".
+        if (member is not null)
+            _members.Add(member);
+    }
 }
 
 /// <summary>
@@ -816,6 +837,9 @@ public class CategoryChannel : IGuildChannel
     /// <inheritdoc/>
     [JsonProperty("guild_id")]
     public ulong GuildId { get; internal set; }
+    
+    /// <inheritdoc/>
+    public Guild Guild { get; internal set; }
     
     /// <summary>
     /// Always <c>null</c> for this channel type.
