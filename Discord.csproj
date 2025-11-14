@@ -5,6 +5,17 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <LangVersion>14</LangVersion>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <PackageId>Discord.cs</PackageId>
+        <Version>0.0.1-alpha</Version>
+        <Title>Discord.cs</Title>
+        <Authors>Defxult</Authors>
+        <Description>A Discord API library.</Description>
+        <PackageLicenseUrl>https://github.com/Defxult/discord.cs/blob/master/LICENSE</PackageLicenseUrl>
+        <RepositoryUrl>https://github.com/Defxult/discord.cs</RepositoryUrl>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <IncludeSymbols>true</IncludeSymbols>
+        <IncludeSource>true</IncludeSource>
     </PropertyGroup>
 
     <ItemGroup>
