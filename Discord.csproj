@@ -1,13 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <LangVersion>14</LangVersion>
+        <LangVersion>default</LangVersion>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Discord.cs</PackageId>
-        <Version>0.0.1-alpha</Version>
+        <Version>0.0.2-alpha</Version>
         <Title>Discord.cs</Title>
         <Authors>Defxult</Authors>
         <Description>A Discord API library.</Description>
@@ -16,6 +16,8 @@
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <IncludeSymbols>true</IncludeSymbols>
         <IncludeSource>true</IncludeSource>
+        <PackageProjectUrl>https://github.com/Defxult/discord.cs</PackageProjectUrl>
+        <PackageTags>discord discord-api discord-bot websocket gateway interactions slash-commands rest-api csharp dotnet library</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>
