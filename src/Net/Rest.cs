@@ -1182,6 +1182,20 @@ internal class Rest
     
 
     #endregion
+
+    #region WEBHOOK
+
+    // Returns the new webhook object for the given id.
+    // 
+    // This request requires the MANAGE_WEBHOOKS permission unless the application making the request owns the webhook.
+    // https://discord.com/developers/docs/resources/webhook#get-webhook
+    internal async Task<Webhook> GetWebhookAsync(ulong id)
+    {
+        string data = await RequestAsync(Get, Route($"/webhooks/{id}"));
+        return JsonConvert.DeserializeObject<Webhook>(data)!;
+    }
+
+    #endregion
     
     // Combine the base API route with the HTTP request-specific route.
     private static string Route(string endpoint, ApiRoute route = ApiRoute.Base)
