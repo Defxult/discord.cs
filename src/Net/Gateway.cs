@@ -2,6 +2,8 @@ using System.Buffers;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using Discord.Channels.Abstractions;
+using Discord.Channels.Models;
 using Discord.Models;
 using Discord.Utility;
 using Newtonsoft.Json;
@@ -140,6 +142,34 @@ public sealed class DiscordGatewayClient
     /// Requires <see cref="Intents.Guilds"/>.
     /// </remarks>
     public event EventHandler<(ulong guildId, ulong threadId)>? OnThreadDelete;
+
+    /// <summary>
+    /// Dispatched when a <see cref="ThreadChannel"/> has its members updated.
+    /// </summary>
+    /// <remarks>
+    /// The values provided to the event handler contains the following:
+    /// <list type="bullet">
+    ///     <item><c>threadId</c> ID of the thread where the update occurred.</item>
+    ///     <item><c>guildId</c> ID of the guild where the update occurred.</item>
+    ///     <item><c>added</c> Members that were added to the thread.</item>
+    ///     <item><c>removed</c> IDs of the members that were removed.</item>
+    /// </list>
+    /// Requires <see cref="Intents.Guilds"/>.
+    /// </remarks>
+    public event EventHandler<(ulong threadId, ulong guildId, IEnumerable<ThreadMember> added, IEnumerable<ulong> removed)>? OnThreadMembersUpdate;
+    
+    /// <summary>
+    /// Dispatched when the bot <i>gains</i> access to a <see cref="ThreadChannel"/>.
+    /// </summary>
+    /// <remarks>
+    /// The values provided to the event handler contains the following:
+    /// <list type="bullet">
+    ///     <item><c>guildId</c> ID of the guild where the sync occurred.</item>
+    ///     <item><c>threads</c> Threads that were synced.</item>
+    /// </list>
+    /// Requires <see cref="Intents.Guilds"/>.
+    /// </remarks>
+    public event EventHandler<(ulong guildId, IEnumerable<ThreadChannel> threads)>? OnThreadListSync;
 
     #endregion
     
@@ -503,26 +533,31 @@ public sealed class DiscordGatewayClient
                 switch (payload.T)
                 {
                     case "READY":
-                        _sessionId = GetElementValue(D(), "session_id").ToString();
-                        _resumeGatewayUrl = GetElementValue(D(), "resume_gateway_url").ToString();
+                        _sessionId = GetElementValue(d, "session_id").ToString();
+                        _resumeGatewayUrl = GetElementValue(d, "resume_gateway_url").ToString();
                         Dev.Log($"[GW] READY received, session ID: {_sessionId} - Resume URL: {_resumeGatewayUrl}");
                         
-                        var userElement = GetElementValue(D(), "user");
+                        var userElement = GetElementValue(d, "user");
                         _bot.User = Deserialize<User>(userElement);
                         break;
                     case "RESUMED":
                         Dev.Log("[GW] Successfully resumed");
                         break;
                     case "MESSAGE_CREATE":
-                        var createdMessage = Deserialize<Message>(D());
+                        var createdMessage = Deserialize<Message>(d);
                         _rest.SetMessageValues([createdMessage]);
                         
                         // Update the last_message_id for that channel.
                         if (createdMessage.GuildId is not null)
                         {
-                            var cmChannel = createdMessage.Guild!.GetChannel(createdMessage.ChannelId)!;
-                            if (cmChannel is Messageable messageable)
-                                messageable.LastMessageId = createdMessage.Id;
+                            var cmChannel = createdMessage.Guild!.GetChannel(createdMessage.ChannelId);
+                            cmChannel?.LastMessageId = createdMessage.Id;
+                            // If it's a thread, update the values associated with it.
+                            if (createdMessage.Guild!.GetThread(createdMessage.ChannelId) is { } thread)
+                            {
+                                thread.MessageCount += 1;
+                                thread.TotalMessagesSent += 1;
+                            }
                             // Else: it's a non-messageable channel, AKA a ForumChannel etc
                         }
                         else
@@ -544,7 +579,7 @@ public sealed class DiscordGatewayClient
                         OnMessageCreate?.Invoke(this, createdMessage);
                         break;
                     case "GUILD_CREATE":
-                        var createdGuild = Deserialize<Guild>(D());
+                        var createdGuild = Deserialize<Guild>(d);
                         _rest.SetGuildValues(createdGuild);
                         
                         // If the guild is already in cache, this is most likely being dispatched again due to it
@@ -566,7 +601,7 @@ public sealed class DiscordGatewayClient
                         }
                         break;
                     case "GUILD_UPDATE":
-                        var updatedGuild = Deserialize<Guild>(D());
+                        var updatedGuild = Deserialize<Guild>(d);
                         if (_bot.GetGuild(updatedGuild.Id) is { } fug)
                         {
                             fug.Update(updatedGuild);
@@ -574,30 +609,30 @@ public sealed class DiscordGatewayClient
                         }
                         break;
                     case "GUILD_DELETE":
-                        var gdId = GetElementValue(D(), "id").GetUInt64();
-                        var gduElement = GetElementValue(D(), "unavailable");
+                        var gdId = GetElementValue(d, "id").GetUInt64();
+                        var gduElement = GetElementValue(d, "unavailable");
                         bool? gdUnavailable = gduElement.ValueKind == JsonValueKind.Null ? null : gduElement.GetBoolean();
                         _bot._guilds.RemoveWhere(g => g.Id == gdId);
                         _bot._cachedMessages.RemoveWhere(m => m.GuildId == gdId);
                         OnGuildDelete?.Invoke(this, (gdId, gdUnavailable));
                         break;
                     case "GUILD_MEMBERS_CHUNK":
-                        var chunkedGuildId = Convert.ToUInt64(GetElementValue(D(), "guild_id").ToString());
-                        var chunkedMembers = GetElementValue(D(), "members");
+                        var chunkedGuildId = Convert.ToUInt64(GetElementValue(d, "guild_id").ToString());
+                        var chunkedMembers = GetElementValue(d, "members");
                         var convertedChunkedMembers = Deserialize<List<Member>>(chunkedMembers);
                         _bot._rest.SetMemberValues(convertedChunkedMembers, chunkedGuildId);
                         if (_bot.GetGuild(chunkedGuildId) is { } chunkedGuild)
                             chunkedGuild._members.UnionWith(convertedChunkedMembers);
                         break;
                     case "GUILD_SOUNDBOARD_SOUND_CREATE":
-                        var gssCreate = Deserialize<SoundboardSound>(D());
+                        var gssCreate = Deserialize<SoundboardSound>(d);
                         _bot._rest.SetSoundboardSoundValues([gssCreate]);
                         if (_bot.GetGuild(gssCreate.GuildId!.Value) is { } gscGuild)
                             gscGuild._soundboardSounds.Add(gssCreate);
                         OnGuildSoundboardSoundCreate?.Invoke(this, gssCreate);
                         break;
                     case "GUILD_SOUNDBOARD_SOUND_UPDATE":
-                        var gssUpdate = Deserialize<SoundboardSound>(D());
+                        var gssUpdate = Deserialize<SoundboardSound>(d);
                         _bot._rest.SetSoundboardSoundValues([gssUpdate]);
                         if (_bot.GetGuild(gssUpdate.GuildId!.Value) is { } gsuGuild)
                         {
@@ -607,8 +642,8 @@ public sealed class DiscordGatewayClient
                         OnGuildSoundboardSoundUpdate?.Invoke(this, gssUpdate);
                         break;
                     case "GUILD_SOUNDBOARD_SOUND_DELETE":
-                        var gsdSoundId = Convert.ToUInt64(GetElementValue(D(), "sound_id").ToString());
-                        var gsdGuildId = Convert.ToUInt64(GetElementValue(D(), "guild_id").ToString());
+                        var gsdSoundId = Convert.ToUInt64(GetElementValue(d, "sound_id").ToString());
+                        var gsdGuildId = Convert.ToUInt64(GetElementValue(d, "guild_id").ToString());
                         SoundboardSound? gsdSound = null;
                         if (_bot.GetGuild(gsdGuildId) is { } gsdGuild)
                         {
@@ -618,22 +653,22 @@ public sealed class DiscordGatewayClient
                         OnGuildSoundboardSoundDelete?.Invoke(this, (gsdGuildId, gsdSoundId, gsdSound));
                         break;
                     case "THREAD_CREATE":
-                        var tcGuildId = Deserialize<ulong>(GetElementValue(D(), "guild_id"));
-                        var createdThread = Deserialize<ThreadChannel>(D());
+                        var tcGuildId = Deserialize<ulong>(GetElementValue(d, "guild_id"));
+                        var createdThread = Deserialize<ThreadChannel>(d);
                         if (_bot.GetGuild(tcGuildId) is { } tcGuild)
                             _bot._rest.SetThreadValues([createdThread], tcGuild);
                         
                         // Threads always have a parent_id, whether it's a regular text channel or a forum; so update the
                         // last_message_id (last thread ID) for the forum channel.
                         if (createdThread.Guild.GetChannel(createdThread.ParentId!.Value) is ForumChannel tcfc)
-                            tcfc.LastThreadId = createdThread.Id;
+                            tcfc.LastMessageId = createdThread.Id;
                             
                         createdThread.Guild._threads.Add(createdThread);
                         OnThreadCreate?.Invoke(this, createdThread);
                         break;
                     case "THREAD_UPDATE":
-                        var tuGuildId = Deserialize<ulong>(GetElementValue(D(), "guild_id"));
-                        var updatedThread = Deserialize<ThreadChannel>(D());
+                        var tuGuildId = Deserialize<ulong>(GetElementValue(d, "guild_id"));
+                        var updatedThread = Deserialize<ThreadChannel>(d);
                         if (_bot.GetGuild(tuGuildId) is { } tuGuild)
                         {
                             _bot._rest.SetThreadValues([updatedThread], tuGuild);
@@ -657,12 +692,49 @@ public sealed class DiscordGatewayClient
                             }
                         break;
                     case "THREAD_LIST_SYNC":
-                        // TODO
                         var tlsGuildId = Deserialize<ulong>(GetElementValue(d, "guild_id"));
+                        var tlsThreads = Deserialize<List<ThreadChannel>>(GetElementValue(d, "threads"));
+                        var tlsThreadMembers = Deserialize<List<ThreadMember>>(GetElementValue(d, "members"));
+                        if (_bot.GetGuild(tlsGuildId) is { } tlsGuild)
+                        {
+                            foreach (var newThread in tlsThreads)
+                            {
+                                // If the thread isn't already synced, process it.
+                                if (tlsGuild.GetThread(newThread.Id) is { } found) continue;
+                                
+                                var match = tlsThreadMembers.Where(m => m.ThreadId == newThread.Id);
+                                newThread._members.AddRange(match);
+                                _bot._rest.SetThreadValues([newThread], tlsGuild);
+                                tlsGuild._threads.Add(newThread);
+                            }
+                            OnThreadListSync?.Invoke(this, (tlsGuildId, tlsThreads));
+                        }
+                        break;
+                    case "THREAD_MEMBER_UPDATE":
+                        // Unused
                         break;
                     case "THREAD_MEMBERS_UPDATE":
-                        // TODO
+                        var tmuThreadId = Deserialize<ulong>(GetElementValue(d, "id"));
                         var tmuGuildId = Deserialize<ulong>(GetElementValue(d, "guild_id"));
+                        var tmuMemberCount = Deserialize<int>(GetElementValue(d, "member_count"));
+                        
+                        var tmuAddedMembers = new List<ThreadMember>();
+                        if (d.TryGetProperty("added_members", out var addedMembers))
+                            tmuAddedMembers.AddRange(Deserialize<List<ThreadMember>>(addedMembers));
+                        
+                        var tmuRemovedMemberIds = new List<ulong>();
+                        if (d.TryGetProperty("removed_member_ids", out var removedMemberIds))
+                            tmuRemovedMemberIds.AddRange(Deserialize<List<ulong>>(removedMemberIds));
+                        
+                        if (_bot.GetGuild(tmuGuildId) is { } tmug)
+                            if (tmug.GetThread(tmuThreadId) is { } tmut)
+                            {
+                                foreach (var rmid in tmuRemovedMemberIds)
+                                    tmut._members.RemoveAll(m => m.ThreadId == rmid);
+                                tmut._members.AddRange(tmuAddedMembers);
+                                tmut.MemberCount = tmuMemberCount;
+                            }
+                        OnThreadMembersUpdate?.Invoke(this, (tmuThreadId, tmuGuildId, tmuAddedMembers, tmuRemovedMemberIds));
                         break;
                 }
                 break;

@@ -1,3 +1,4 @@
+using Discord.Channels.Abstractions;
 using Newtonsoft.Json;
 
 namespace Discord.Models;
@@ -100,11 +101,11 @@ public class Message : IEquatable<Message>
     #endregion
 
     #region CUSTOM
-    
+
     /// <summary>
     /// Your bot instance.
     /// </summary>
-    public Bot Bot { get; internal set; }
+    public Bot Bot { get; internal set; } = null!;
 
     /// <summary>
     /// Guild this message belongs to. Can be <c>null</c> if it's ephemeral or direct message.
@@ -114,25 +115,14 @@ public class Message : IEquatable<Message>
     /// <summary>
     /// Channel the message was sent in.
     /// </summary>
-    public Messageable? Channel
-    {
-        get
-        {
-            if (Bot.GetChannel(ChannelId) is { } gc) 
-                return (Messageable)gc;
-            if (Bot.GetThread(ChannelId) is { } thread)
-                return thread;
-            if (Bot.GetDmChannel(ChannelId) is { } dm) 
-                return dm;
-            return null;
-        }
-    }
+    public IMessageable Channel => (Bot.GetAnyChannel(ChannelId) as IMessageable)!;
     
     internal DateTime _expiration;
 
     #endregion
     
-    
+    private Message() { }
+
     public bool Equals(Message? other)
     {
         if (other is not null)

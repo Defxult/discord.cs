@@ -1,3 +1,4 @@
+using Discord.Channels.Abstractions;
 using Newtonsoft.Json;
 
 namespace Discord.Models;

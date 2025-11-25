@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Text.Json;
 using System.Threading.Channels;
+using Discord.Channels.Abstractions;
+using Discord.Channels.Models;
 using Discord.Utility;
 using Discord.Net;
 using Newtonsoft.Json;
@@ -310,8 +312,8 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// All visible channels in the guild.
     /// </summary>
-    public IReadOnlyCollection<IGuildChannel> Channels => _channels;
-    internal readonly List<IGuildChannel> _channels;
+    public IReadOnlyCollection<GuildChannel> Channels => _channels;
+    internal readonly List<GuildChannel> _channels;
     
     /// <summary>
     /// All visible threads in the guild.
@@ -322,11 +324,11 @@ public class Guild : IEquatable<Guild>
     #endregion
     
     #region CUSTOM
-    
+
     /// <summary>
     /// Your bot instance.
     /// </summary>
-    public Bot Bot { get; internal set; }
+    public Bot Bot { get; internal set; } = null!;
 
     /// <summary>
     /// Your bots member object for this guild.
@@ -354,7 +356,7 @@ public class Guild : IEquatable<Guild>
     /// <summary>
     /// Text channels in the guild.
     /// </summary>
-    public IReadOnlyCollection<TextChannel> TextChannels =>
+    public IReadOnlyCollection<TextChannel> TextChannels => 
         (from c in _channels
         where c.Type == ChannelType.GuildText
         select (TextChannel)c).ToList();
@@ -366,7 +368,7 @@ public class Guild : IEquatable<Guild>
         (from c in _channels
         where c.Type == ChannelType.GuildAnnouncement
         select (AnnouncementChannel)c).ToList();
-
+    
     /// <summary>
     /// Voice channels in the guild.
     /// </summary>
@@ -413,9 +415,8 @@ public class Guild : IEquatable<Guild>
     private Guild(ulong id, List<JSON> channels, List<JSON> threads)
     {
         Id = id;
-        var parsed = IGuildChannel.ParseAll(channels, threads);
-        _channels = parsed.channels;
-        _threads = parsed.threads;
+        _channels = GuildChannel.ParseChannels(channels);
+        _threads = GuildChannel.ParseThreads(threads);
     }
 
     public override bool Equals(object? other) => other is Guild guild && Equals(guild);
@@ -433,20 +434,20 @@ public class Guild : IEquatable<Guild>
     public async Task EditAsync(GuildEdit edit, string? reason = null)
         => await Bot._rest.ModifyGuildAsync(Id, edit, reason);
     
-    /// <summary>
-    /// Requests all channels in the guild.
-    /// </summary>
-    /// <returns> All channels in the guild the bot has access to.</returns>
-    /// <remarks>It's generally preferred to use <see cref="Channels"/> unless this is needed.</remarks>
-    public async Task<ICollection<IGuildChannel>> RequestChannelsAsync() =>
-        await Bot._rest.GetGuildChannelsAsync(Id);
+    // /// <summary>
+    // /// Requests all channels in the guild.
+    // /// </summary>
+    // /// <returns> All channels in the guild the bot has access to.</returns>
+    // /// <remarks>It's generally preferred to use <see cref="Channels"/> unless this is needed.</remarks>
+    // public async Task<ICollection<IGuildChannel>> RequestChannelsAsync() =>
+    //     await Bot._rest.GetGuildChannelsAsync(Id);
     
     /// <summary>
     /// Retrieve a channel from the cache.
     /// </summary>
     /// <param name="id">Channel ID.</param>
     /// <returns>The channel matching the given ID, or <c>null</c> if not found.</returns>
-    public IGuildChannel? GetChannel(ulong id) 
+    public GuildChannel? GetChannel(ulong id) 
         => _channels.FirstOrDefault(c => c.Id == id);
     
     /// <summary>

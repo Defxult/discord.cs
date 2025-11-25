@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Net.WebSockets;
+using Discord.Channels.Abstractions;
+using Discord.Channels.Models;
 using Discord.Net;
 using Discord.Models;
 using Discord.Utility;
@@ -103,6 +105,35 @@ public class Bot
     #region PUBLIC
 
     /// <summary>
+    /// Retrieve a channel from the cache. This searches through all guild channels/threads, as well as DM channels.
+    /// </summary>
+    /// <param name="id">Channel ID.</param>
+    /// <returns>
+    /// The <see cref="GuildChannel"/> or <see cref="DmChannel"/> matching the given ID,
+    /// or <c>null</c> if not found.
+    /// </returns>
+    public IChannel? GetAnyChannel(ulong id)
+    {
+        Task<IChannel?>[] tasks =
+        [
+            Task.Run(IChannel? () => GetDmChannel(id)),
+            Task.Run(IChannel? () => GetChannel(id)),
+            Task.Run(IChannel? () => GetThread(id))
+        ];
+        var remaining = tasks.ToList();
+        while (remaining.Count > 0)
+        {
+            var index = Task.WaitAny(remaining.Cast<Task>().ToArray());
+            var finished = remaining[index];
+            var result = finished.Result;
+            if (result != null)
+                return result;
+            remaining.RemoveAt(index);
+        }
+        return null;
+    }
+    
+    /// <summary>
     /// Retrieve a DM channel from the cache.
     /// </summary>
     /// <param name="id">DM channel ID.</param>
@@ -113,27 +144,27 @@ public class Bot
     /// <summary>
     /// Retrieve a guild channel from the cache.
     /// </summary>
-    /// <param name="id">Channel ID.</param>
+    /// <param name="id">Guild channel ID.</param>
     /// <returns>The guild channel matching the given ID, or <c>null</c> if not found.</returns>
-    public IGuildChannel? GetChannel(ulong id)
+    public GuildChannel? GetChannel(ulong id)
     {
         foreach (var guild in _guilds)
             if (guild.GetChannel(id) is { } channel)
                 return channel;
         return null;
     }
-
+    
     /// <summary>
     /// Channels the bot has access to.
     /// </summary>
     /// <returns>All channels in every guild.</returns>
-    public IReadOnlyCollection<IGuildChannel> GetChannels() => 
+    public IReadOnlyCollection<GuildChannel> GetChannels() => 
         _guilds.SelectMany(g => g.Channels).ToList();
-
+    
     /// <summary>
     /// Retrieve a thread channel from the cache.
     /// </summary>
-    /// <param name="id">Channel ID.</param>
+    /// <param name="id">Thread ID.</param>
     /// <returns>The thread channel matching the given ID, or <c>null</c> if not found.</returns>
     public ThreadChannel? GetThread(ulong id)
     {

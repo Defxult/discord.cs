@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Discord.Channels.Abstractions;
+using Discord.Channels.Models;
 
 namespace Discord.Net;
 using System.Net.Http.Headers;
@@ -76,38 +78,143 @@ internal class Rest
         foreach (var t in threads)
         {
             t.Guild = guild;
-            t.GuildId = guild.Id;
             t.Bot = _bot;
         }
     }
 
     private void SetChannelValues(Guild guild)
     {
-        var messageables = new List<GuildChannelMessageable>();
-        messageables.AddRange(guild.TextChannels);
-        messageables.AddRange(guild.AnnouncementChannels);
-        messageables.AddRange(guild.VoiceChannels);
-        messageables.AddRange(guild.StageChannels);
-        messageables.AddRange(guild.Threads);
-        messageables.ForEach(gcm =>
+        // Messageables
+        guild.TextChannels.ToList().ForEach(t => 
         {
-            gcm.Guild = guild;
-            gcm.GuildId = guild.Id;
-            gcm.Bot = _bot;
+            t.Bot = _bot;
+            t.Guild = guild;
+        });
+        guild.AnnouncementChannels.ToList().ForEach(t => 
+        {
+            t.Bot = _bot;
+            t.Guild = guild;
+        });
+        guild.VoiceChannels.ToList().ForEach(t => 
+        {
+            t.Bot = _bot;
+            t.Guild = guild;
+        });
+        guild.StageChannels.ToList().ForEach(t => 
+        {
+            t.Bot = _bot;
+            t.Guild = guild;
+        });
+        guild.Threads.ToList().ForEach(t => 
+        {
+            t.Bot = _bot;
+            t.Guild = guild;
         });
         
         // Non-messageables
-        foreach (var c in guild.CategoryChannels) { c.GuildId = guild.Id;
-            c.Guild = guild; c.Bot = _bot;
+        foreach (var c in guild.CategoryChannels) 
+        { 
+            c.Guild = guild; 
+            c.Bot = _bot;
         }
-        foreach (var c in guild.ForumChannels) { c.GuildId = guild.Id;
-            c.Guild = guild; c.Bot = _bot;
+        foreach (var c in guild.ForumChannels) 
+        {
+            c.Guild = guild;
+            c.Bot = _bot;
         }
-        foreach (var c in guild.MediaChannels) { c.GuildId = guild.Id;
-            c.Guild = guild; c.Bot = _bot;
+        foreach (var c in guild.MediaChannels) 
+        {
+            c.Guild = guild;
+            c.Bot = _bot;
         }
     }
     
+    // Update a channel's settings. Returns a channel on success, and a 400 BAD REQUEST on invalid parameters.
+    // https://discord.com/developers/docs/resources/channel#modify-channel
+    internal async Task<GuildChannel> ModifyChannelAsync(GuildChannelEdit edit, GuildChannel channel, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/channels/{channel.Id}"), edit._payload, reason);
+        var converted = JsonConvert.DeserializeObject<JSON>(data)!;
+        return channel.Type is ChannelType.PublicThread or ChannelType.PrivateThread or ChannelType.AnnouncementThread
+            ? GuildChannel.ParseThreads([converted]).First()
+            : GuildChannel.ParseChannels([converted]).First();
+    }
+
+    // Delete a channel, or close a private message. Requires the MANAGE_CHANNELS permission for the guild, or
+    // MANAGE_THREADS if the channel is a thread. Deleting a category does not delete its child channels; they will have
+    // their parent_id removed and a Channel Update Gateway event will fire for each of them. Returns a channel object on
+    // success. Fires a Channel Delete Gateway event (or Thread Delete if the channel was a thread).
+    // https://discord.com/developers/docs/resources/channel#deleteclose-channel
+    internal async Task DeleteCloseChannelAsync(ulong channelId, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/channels/{channelId}"), auditReason: reason);
+    }
+    
+    // Edit the channel permission overwrites for a user or role in a channel. Only usable for guild channels. Requires
+    // the MANAGE_ROLES permission. Only permissions your bot has in the guild or parent channel (if applicable) can be
+    // allowed/denied (unless your bot has a MANAGE_ROLES overwrite in the channel). Returns a 204 empty response on success.
+    // Fires a Channel Update Gateway event. For more information about permissions, see permissions.
+    // https://discord.com/developers/docs/resources/channel#edit-channel-permissions
+    internal async Task EditChannelPermissions(ulong channelId, PermissionOverwrites overwrites, string? reason)
+    {
+        await RequestAsync(Put, Route($"/channels/{channelId}/permissions/{overwrites.Id}"), overwrites.ToPayload(),
+            reason);
+    }
+    
+    
+    // Returns a list of invite objects (with invite metadata) for the channel. Only usable for guild channels. Requires
+    // the MANAGE_CHANNELS permission.
+    // https://discord.com/developers/docs/resources/channel#get-channel-invites
+    internal async Task<List<Invite>> GetChannelInvitesAsync(ulong channelId)
+    {
+        string data = await RequestAsync(Get, Route($"/channels/{channelId}/invites"));
+        var invites = JsonConvert.DeserializeObject<List<Invite>>(data)!;
+        SetInviteValues(invites);
+        return invites;
+    }
+    
+    // Create a new invite object for the channel. Only usable for guild channels. Requires the CREATE_INSTANT_INVITE
+    // permission. All JSON parameters for this route are optional, however the request body is not. If you are not
+    // sending any fields, you still have to send an empty JSON object ({}). Returns an invite object. Fires an Invite
+    // Create Gateway event.
+    // https://discord.com/developers/docs/resources/channel#create-channel-invite
+    internal async Task<Invite> CreateChannelInviteAsync(ulong channelId, JSON payload, string? reason)
+    {
+        string data = await RequestAsync(Post, Route($"/channels/{channelId}/invites"));
+        var invites = JsonConvert.DeserializeObject<Invite>(data)!;
+        SetInviteValues([invites]);
+        return invites;
+    }
+    
+    // Delete a channel permission overwrite for a user or role in a channel. Only usable for guild channels. Requires
+    // the MANAGE_ROLES permission. Returns a 204 empty response on success. Fires a Channel Update Gateway event.
+    // For more information about permissions, see permissions
+    // https://discord.com/developers/docs/resources/channel#delete-channel-permission
+    internal async Task DeleteChannelPermissions(ulong channelId, ulong userOrRoleId, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/channels/{channelId}/permissions/{userOrRoleId}"), reason);
+    }
+    
+    // Follow an Announcement Channel to send messages to a target channel. Requires the MANAGE_WEBHOOKS permission in
+    // the target channel. Returns a followed channel object. Fires a Webhooks Update Gateway event for the target channel.
+    // https://discord.com/developers/docs/resources/channel#follow-announcement-channel
+    internal async Task<Webhook> FollowAnnouncementChannel(ulong channelIdToFollow, ulong destinationChannelId, string? reason)
+    {
+        var payload = new JSON { { "webhook_channel_id", destinationChannelId } };
+        string data = await RequestAsync(Post, Route($"/channels/{channelIdToFollow}/followers"), payload, reason);
+        var converted = JsonConvert.DeserializeObject<JSON>(data)!;
+        var webhookId = Convert.ToUInt64(converted["webhook_id"]);
+        return await GetWebhookAsync(webhookId);
+    }
+    
+    // Post a typing indicator for the specified channel, which expires after 10 seconds. Returns a 204 empty response
+    // on success. Fires a Typing Start Gateway event.
+    // https://discord.com/developers/docs/resources/channel#trigger-typing-indicator
+    internal async Task TriggerTypingIndicator(IMessageable messageable)
+    {
+        await RequestAsync(Post, Route($"/channels/{messageable.Id}/typing"));
+    }
+
     #endregion
 
     #region EMOJI
@@ -405,12 +512,11 @@ internal class Rest
     
     // Returns a list of guild channel objects. Does not include threads.
     // https://discord.com/developers/docs/resources/guild#get-guild-channels
-    internal async Task<List<IGuildChannel>> GetGuildChannelsAsync(ulong guildId)
+    internal async Task<List<GuildChannel>> GetGuildChannelsAsync(ulong guildId)
     {
         string data = await RequestAsync(Get, Route($"/guilds/{guildId}/channels"));
         var channelObjs = JsonConvert.DeserializeObject<List<JSON>>(data)!;
-        var parsed = IGuildChannel.ParseAll(channelObjs, []);
-        return parsed.channels;
+        return GuildChannel.ParseChannels(channelObjs);
     }
 
     internal void SetRoleValues(IEnumerable<Role> roles, ulong guildId)
