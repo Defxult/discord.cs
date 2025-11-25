@@ -54,7 +54,8 @@ public enum Permission : ulong
     SendVoiceMessages                = 1UL << 46,
     SendPolls                        = 1UL << 49,
     UseExternalApps                  = 1UL << 50,
-    PinMessages                      = 1UL << 51
+    PinMessages                      = 1UL << 51,
+    BypassSlowMode                   = 1UL << 52
 }
 
 /// <summary>
