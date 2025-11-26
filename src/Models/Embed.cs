@@ -1,4 +1,3 @@
-using Discord.Net;
 using Newtonsoft.Json;
 
 namespace Discord.Models;
@@ -18,50 +17,50 @@ public class Embed
     /// The title; max 256 characters.
     /// </summary>
     [JsonProperty("title", NullValueHandling = NullValueHandling.Ignore)]
-    public string? Title;
+    public string? Title { get; set; }
 
     /// <summary>
     /// The description; max 4096 characters.
     /// </summary>
     [JsonProperty("description", NullValueHandling = NullValueHandling.Ignore)]
-    public string? Description;
+    public string? Description { get; set; }
 
     /// <summary>
     /// URL of embed.
     /// </summary>
     [JsonProperty("url", NullValueHandling = NullValueHandling.Ignore)]
-    public string? Url;
+    public string? Url { get; set; }
 
     /// <summary>
     /// Timestamp of embed.
     /// </summary>
     [JsonProperty("timestamp", NullValueHandling = NullValueHandling.Ignore)]
-    public DateTime? Timestamp;
+    public DateTime? Timestamp { get; set; }
 
     /// <summary>
     /// Color of the embed.
     /// </summary>
     [JsonIgnore]
-    public Color? Color;
-    [JsonProperty("color", NullValueHandling = NullValueHandling.Ignore)] private int? _color => Color?.Value; // TODO
+    public Color? Color { get; set; }
+    [JsonProperty("color", NullValueHandling = NullValueHandling.Ignore)] private int? _color => Color?.Value;
 
     /// <summary>
     /// Footer information.
     /// </summary>
     [JsonProperty("footer", NullValueHandling = NullValueHandling.Ignore)]
-    public EmbedFooter? Footer;
+    public EmbedFooter? Footer { get; set; }
 
     /// <summary>
     /// Image information.
     /// </summary>
     [JsonProperty("image", NullValueHandling = NullValueHandling.Ignore)]
-    public EmbedImage? Image;
+    public EmbedImage? Image { get; set; }
 
     /// <summary>
     /// Thumbnail information.
     /// </summary>
     [JsonProperty("thumbnail", NullValueHandling = NullValueHandling.Ignore)]
-    public EmbedThumbnail? Thumbnail;
+    public EmbedThumbnail? Thumbnail { get; set; }
 
     /// <summary>
     /// Video information.
@@ -79,13 +78,13 @@ public class Embed
     /// Author information.
     /// </summary>
     [JsonProperty("author", NullValueHandling = NullValueHandling.Ignore)]
-    public EmbedAuthor? Author;
+    public EmbedAuthor? Author { get; set; }
 
     /// <summary>
     /// Embed fields (max 25).
     /// </summary>
     [JsonProperty("fields", NullValueHandling = NullValueHandling.Ignore)]
-    public ICollection<EmbedField>? Fields;
+    public ICollection<EmbedField>? Fields { get; set; }
 
     /// <summary>
     /// Total number of characters in the embed (max 6000).
@@ -304,14 +303,23 @@ public record EmbedProvider
 /// </summary>
 public record EmbedAuthor
 {
+    /// <summary>
+    /// Name of the author. Up to 256 characters.
+    /// </summary>
     [JsonProperty("name")]
-    public string Name;
+    public string Name { get; set; }
     
+    /// <summary>
+    /// URL link for the author.
+    /// </summary>
     [JsonProperty("url")]    
-    public string? Url;
+    public string? Url { get; set; }
 
+    /// <summary>
+    /// The URL for the image that will be displayed for the author. Only supports HTTP(S).
+    /// </summary>
     [JsonProperty("icon_url")]
-    public string? IconUrl;
+    public string? IconUrl { get; set; }
 
     /// <summary>
     /// Initializes a new embed author instance.
@@ -332,14 +340,23 @@ public record EmbedAuthor
 /// </summary>
 public record EmbedField
 {
+    /// <summary>
+    /// Name of the field. Up to 256 characters.
+    /// </summary>
     [JsonProperty("name")]
-    public string Name;
+    public string Name { get; set; }
 
+    /// <summary>
+    /// Contents of the field. Up to 1024 characters.
+    /// </summary>
     [JsonProperty("value")]
-    public string Value;
+    public string Value { get; set; }
 
+    /// <summary>
+    /// Whether this field should display inline.
+    /// </summary>
     [JsonProperty("inline")]
-    public bool Inline;
+    public bool Inline { get; set; }
 
     /// <summary>
     /// Initializes a new embed field instance.

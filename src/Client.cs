@@ -105,7 +105,7 @@ public class Bot
     #region PUBLIC
 
     /// <summary>
-    /// Retrieve a channel from the cache. This searches through all guild channels/threads, as well as DM channels.
+    /// Retrieve a channel from the cache. This searches through all guild channels, threads, as well as DM channels.
     /// </summary>
     /// <param name="id">Channel ID.</param>
     /// <returns>
@@ -155,7 +155,7 @@ public class Bot
     }
     
     /// <summary>
-    /// Channels the bot has access to.
+    /// Guild channels the bot has access to.
     /// </summary>
     /// <returns>All channels in every guild.</returns>
     public IReadOnlyCollection<GuildChannel> GetChannels() => 
