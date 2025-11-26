@@ -1,4 +1,9 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Discord.Channels.Abstractions;
+using Discord.Channels.Models;
+using Discord.Net;
+using Discord.Utility;
 using Newtonsoft.Json;
 
 namespace Discord.Models;
@@ -29,7 +34,7 @@ public class Message : IEquatable<Message>
     public required User Author { get; init; }
     
     /// <summary>
-    /// Content of the message. Will be an empty string if the <see cref="Intents.MessageContent"/> intent is disabled via
+    /// Content of the message. Will be an empty string if <see cref="Intents.MessageContent"/> is disabled via
     /// the <see cref="Bot"/> constructor or Developer Portal.
     /// </summary>
     [JsonProperty("content")]
@@ -76,6 +81,24 @@ public class Message : IEquatable<Message>
         }
     }
     [JsonProperty("mention_roles")] private List<ulong> _mentionedRoleIds = [];
+
+    /// <summary>
+    /// Any attached files.
+    /// </summary>
+    [JsonProperty("attachments")]
+    public IReadOnlyCollection<MessageAttachment> Attachments { get; init; } = [];
+    
+    /// <summary>
+    /// Embeds on the message.
+    /// </summary>
+    [JsonProperty("embeds")]
+    public IReadOnlyList<Embed> Embeds { get; private set; } = [];
+    
+    /// <summary>
+    /// Reactions to the message.
+    /// </summary>
+    [JsonProperty("reactions")]
+    public IReadOnlyList<Reaction> Reactions { get; private set; } = [];
     
     #region These fields are specific to the MESSAGE_CREATE/UPDATE events
 
@@ -116,6 +139,35 @@ public class Message : IEquatable<Message>
     /// Channel the message was sent in.
     /// </summary>
     public IMessageable Channel => (Bot.GetAnyChannel(ChannelId) as IMessageable)!;
+
+    /// <summary>
+    /// Channels mentioned in the message.
+    /// </summary>
+    [JsonProperty("mention_channels")]
+    public IReadOnlyCollection<GuildChannel> MentionedChannels
+    {
+        // Note: This is a custom implementation because the discord version is way too limited.
+        get
+        {
+            if (Content == string.Empty) return [];
+            
+            var channels = new List<GuildChannel>();
+            var charsToRemove = new[] { "<", ">", "#" };
+            var ids = new HashSet<ulong>();
+            var matches = Regex.Matches(Content, @"<#\d{17,19}>");
+            foreach (Match match in matches)
+            {
+                var value = match.Value;
+                foreach (var ch in charsToRemove)
+                    value = value.Replace(ch, string.Empty);
+                ids.Add(ulong.Parse(value));
+            }
+            foreach (var id in ids)
+                if (Bot.GetChannel(id) is { } channel)
+                    channels.Add(channel);
+            return channels;
+        }
+    }
     
     internal DateTime _expiration;
 
@@ -140,4 +192,732 @@ public class Message : IEquatable<Message>
     public override int GetHashCode() => Id.GetHashCode();
     public static bool operator ==(Message? left, Message? right) => Equals(left, right);
     public static bool operator !=(Message? left, Message? right) => !Equals(left, right);
+    
+    /// <summary>
+    /// Create a thread from a message.
+    /// </summary>
+    /// <param name="name">Name of the thread (1-100 characters).</param>
+    /// <param name="duration">When the thread will stop showing in the channel list after inactivity.</param>
+    /// <param name="slowModeDelaySeconds">Amount of seconds a user has to wait before sending another message (1-21600),
+    /// or <c>null</c> to disable it.
+    /// </param>
+    /// <param name="reason">Reason for creating the thread. This is displayed in the audit-log.</param>
+    /// <returns>The created thread.</returns>
+    /// <remarks>Only valid for messages that were created in a <see cref="TextChannel"/> or <see cref="AnnouncementChannel"/>.</remarks>
+    public async Task<ThreadChannel> CreateThreadAsync(string name,
+        ThreadArchiveDuration duration = ThreadArchiveDuration.ThreeDays, int? slowModeDelaySeconds = null,
+        string? reason = null)
+    {
+        var payload = new JSON
+        {
+            { "name", name },
+            { "auto_archive_duration", duration },
+            { "rate_limit_per_user", slowModeDelaySeconds ?? 0 }
+        };
+        return await Bot._rest.StartThreadFromMessage(Guild!, ChannelId, Id, payload, reason);
+    }
+}
+
+/// <summary>
+/// Represents a <see cref="Message"/> selectable history.
+/// </summary>
+public enum MessageHistory
+{
+    Before,
+    After,
+    Around
+}
+
+/// <summary>
+/// Represents a <see cref="Message"/> reaction.
+/// </summary>
+public record Reaction
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#reaction-object
+    
+    /// <summary>
+    /// Total number of times this emoji have been used to react (including super reacts).
+    /// </summary>
+    [JsonProperty("count")]
+    public int Count { get; internal set; }
+
+    /// <summary>
+    /// Contains the counts for normal and burst reactions.
+    /// </summary>
+    public (int Burst, int Normal) CountDetails { get; internal set; }
+
+    /// <summary>
+    /// Whether the current user reacted using this emoji.
+    /// </summary>
+    [JsonProperty("me")]
+    public bool Me { get; internal set; }
+
+    /// <summary>
+    /// Whether the current user super-reacted using this emoji.
+    /// </summary>
+    [JsonProperty("me_burst")]
+    public bool MeBurst { get; internal set; }
+
+    /// <summary>
+    /// Emoji that represents the reaction.
+    /// </summary>
+    [JsonProperty("emoji")]
+    public PartialEmoji Emoji { get; internal set; }
+
+    /// <summary>
+    /// Colors used for the super reaction.
+    /// </summary>
+    public IReadOnlyCollection<Color> Colors { get; internal set; } = [];
+
+    [JsonConstructor]
+    internal Reaction(JSON count_details, JSON emoji, List<string> burst_colors)
+    {
+        var burst = Convert.ToInt32(count_details["burst"]);
+        var normal = Convert.ToInt32(count_details["normal"]);
+        CountDetails = (burst, normal);
+        var doc = JsonDocument.Parse(JsonConvert.SerializeObject(emoji));
+        Emoji = DiscordGatewayClient.Deserialize<PartialEmoji>(doc.RootElement);
+        Colors = burst_colors.Select(val => new Color(val)).ToList();
+    }
+}
+
+/// <summary>
+/// Represents an attachment on a <see cref="Message"/>.
+/// </summary>
+public class MessageAttachment : Downloadable
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#attachment-object-attachment-structure
+    
+    /// <summary>
+    /// Attachment ID.
+    /// </summary>
+    [JsonProperty("id")]
+    public ulong Id { get; init; }
+
+    /// <summary>
+    /// Name of file attached.
+    /// </summary>
+    [JsonProperty("filename")]
+    public required string Filename { get; init; }
+    
+    /// <summary>
+    /// Description for the file (max 1024 characters).
+    /// </summary>
+    [JsonProperty("description")]
+    public string? Description { get; init; }
+
+    /// <summary>
+    /// The attachment's media type.
+    /// </summary>
+    [JsonProperty("content_type")]
+    public string? ContentType { get; init; }
+
+    /// <summary>
+    /// Size of file in bytes.
+    /// </summary>
+    [JsonProperty("size")]
+    public int Size { get; init; }
+    
+    /// <summary>
+    /// A proxied URL of file.
+    /// </summary>
+    [JsonProperty("proxy_url")]
+    public required string ProxyUrl { get; init; }
+
+    /// <summary>
+    /// Height of file (if image).
+    /// </summary>
+    [JsonProperty("height")]
+    public int? Height { get; init; }
+
+    /// <summary>
+    /// Width of file (if image).
+    /// </summary>
+    [JsonProperty("width")]
+    public int? Width { get; init; }
+
+    /// <summary>
+    /// Whether this attachment is ephemeral.
+    /// </summary>
+    [JsonProperty("ephemeral")]
+    public bool Ephemeral { get; init; }
+
+    /// <summary>
+    /// The duration of the audio file (currently for voice messages).
+    /// </summary>
+    [JsonProperty("duration_secs")]
+    public double? Duration { get; init; }
+
+    /// <summary>
+    /// A bytearray representing a sampled waveform (currently for voice messages).
+    /// </summary>
+    public byte[]? Waveform => _waveform != null ? Convert.FromBase64String(_waveform) : null; 
+    [JsonProperty("waveform")] private string? _waveform;
+
+    /// <summary>
+    /// The attachments flags.
+    /// </summary>
+    public readonly IReadOnlyCollection<MessageAttachmentFlag> Flags;
+
+    [JsonConstructor]
+    internal MessageAttachment(int flags)
+    {
+        Flags = Util.FromBitfield<MessageAttachmentFlag>(flags);
+    }
+}
+
+/// <summary>
+/// Represents the flags for a <see cref="MessageAttachment"/>.
+/// </summary>
+[Flags]
+public enum MessageAttachmentFlag
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#attachment-object-attachment-flags
+    
+    /// <summary>
+    /// This attachment has been edited using the remix feature on mobile.
+    /// </summary>
+    IsRemix = 1 << 2
+}
+
+/// <summary>
+/// Represents a <see cref="Message"/> type.
+/// </summary>
+public enum MessageType
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#message-object-message-types
+    
+    Default,
+    RecipientAdd,
+    RecipientRemove,
+    Call,
+    ChannelNameChange,
+    ChannelIconChange,
+    ChannelPinnedMessage,
+    UserJoin,
+    GuildBoost,
+    GuildBoostTier1,
+    GuildBoostTier2,
+    GuildBoostTier3,
+    ChannelFollowAdd,
+    GuildDiscoveryDisqualified = 14,
+    GuildDiscoveryRequalified,
+    GuildDiscoveryGracePeriodInitialWarning,
+    GuildDiscoveryGracePeriodFinalWarning,
+    ThreadCreated,
+    Reply,
+    ChatInputCommand,
+    ThreadStarterMessage,
+    GuildInviteReminder,
+    ContextMenuCommand,
+    AutoModerationAction,
+    RoleSubscriptionPurchase,
+    InteractionPremiumUpsell,
+    StageStart,
+    StageEnd,
+    StageSpeaker,
+    StageTopic = 31,
+    GuildApplicationPremiumSubscription,
+    GuildIncidentAlertModeEnabled = 36,
+    GuildIncidentAlertModeDisabled,
+    GuildIncidentReportRaid,
+    GuildIncidentReportFalseAlarm,
+    PurchaseNotification = 44,
+    PollResult = 46
+}
+
+/// <summary>
+/// Represents a <see cref="Message"/> activity.
+/// </summary>
+public class MessageActivity
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#message-object-message-activity-structure
+    
+    /// <summary>
+    /// Type of message activity.
+    /// </summary>
+    [JsonProperty("type")]
+    public MessageActivityType Type { get; init; }
+
+    /// <summary>
+    /// Party ID from a Rich Presence event.
+    /// </summary>
+    [JsonProperty("party_id")]
+    public string? PartyId { get; init; }
+    
+    private MessageActivity() { }
+}
+
+/// <summary>
+/// Represents a <see cref="MessageActivity"/> type.
+/// </summary>
+public enum MessageActivityType
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#message-object-message-activity-types
+    
+    Join = 1,
+    Spectate,
+    Listen,
+    JoinRequest	= 5
+}
+
+/// <summary>
+/// Represents the flags on a <see cref="Message"/>.
+/// </summary>
+[Flags]
+public enum MessageFlag
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#message-object-message-flags
+    
+    /// <summary>
+    /// This message has been published to subscribed channels (via Channel Following).
+    /// </summary>
+    Crossposted                      = 1 << 0,
+    
+    /// <summary>
+    /// This message originated from a message in another channel (via Channel Following).
+    /// </summary>
+    IsCrossposted                    = 1 << 1,
+    
+    /// <summary>
+    /// Do not include any embeds when serializing this message.
+    /// </summary>
+    SuppressEmbeds                   = 1 << 2,
+    
+    /// <summary>
+    /// The source message for this crosspost has been deleted (via Channel Following).
+    /// </summary>
+    SourceMessageDeleted             = 1 << 3,
+    
+    /// <summary>
+    /// This message came from the urgent message system.
+    /// </summary>
+    Urgent                           = 1 << 4,
+    
+    /// <summary>
+    /// This message has an associated thread, with the same ID as the message.
+    /// </summary>
+    HasThread                        = 1 << 5,
+    
+    /// <summary>
+    /// This message is only visible to the user who invoked the Interaction.
+    /// </summary>
+    Ephemeral                        = 1 << 6,
+    
+    /// <summary>
+    /// This message is an Interaction Response and the bot is "thinking".
+    /// </summary>
+    Loading                          = 1 << 7,
+    
+    /// <summary>
+    /// This message failed to mention some roles and add their members to the thread.
+    /// </summary>
+    FailedToMentionSomeRolesInThread = 1 << 8,
+    
+    /// <summary>
+    /// This message will not trigger push and desktop notifications.
+    /// </summary>
+    SuppressNotifications            = 1 << 12,
+    
+    /// <summary>
+    /// This message is a voice message.
+    /// </summary>
+    IsVoiceMessage                   = 1 << 13,
+    
+    /// <summary>
+    /// This message has a snapshot (via Message Forwarding).
+    /// </summary>
+    HasSnapshot                      = 1 << 14,
+    
+    /// <summary>
+    /// allows you to create fully component-driven messages.
+    /// </summary>
+    IsComponentsV2                   = 1 << 15
+}
+
+/// <summary>
+/// Represents a <see cref="Message"/> reference.
+/// </summary>
+public record MessageReference
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#message-reference-object
+    
+    /// <summary>
+    /// Type of reference.
+    /// </summary>
+    [JsonProperty("type")]
+    public MessageReferenceType? Type { get; init; }
+    
+    /// <summary>
+    /// ID of the originating message.
+    /// </summary>
+    [JsonProperty("message_id")]
+    public ulong? MessageId { get; init; }
+
+    /// <summary>
+    /// ID of the originating message's channel.
+    /// </summary>
+    [JsonProperty("channel_id")]
+    public ulong? ChannelId { get; init; }
+
+    /// <summary>
+    /// ID of the originating message's guild.
+    /// </summary>
+    [JsonProperty("guild_id")]
+    public ulong? GuildId { get; init; }
+
+    /// <summary>
+    /// When sending, whether to error if the referenced message doesn't exist instead of sending as a normal (non-reply) message.
+    /// </summary>
+    [JsonProperty("fail_if_not_exists")]
+    public bool? FailIfNotExists { get; init; }
+
+    internal MessageReference(MessageReferenceType type, ulong? messageId, ulong? channelId, ulong? guildId,
+        bool failIfNotExists)
+    {
+        Type = type;
+        MessageId = messageId;
+        ChannelId = channelId;
+        GuildId = guildId;
+        FailIfNotExists = failIfNotExists;
+    }
+}
+
+/// <summary>
+/// Represents a <see cref="MessageReference"/> type.
+/// </summary>
+public enum MessageReferenceType
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#message-reference-types
+    
+    /// <summary>
+    /// A standard reference used by replied.
+    /// </summary>
+    Default,
+    
+    /// <summary>
+    /// Reference used to point to a message at a point in time.
+    /// </summary>
+    Forward
+}
+
+/// <summary>
+/// Represents what mentions are allowed in a <see cref="Message"/>.
+/// </summary>
+public record struct AllowedMentions
+{
+    // DOCS: https://discord.com/developers/docs/resources/message#allowed-mentions-object
+    
+    /// <summary>
+    /// If users can be mentioned in a message.
+    /// </summary>
+    public bool Users { get; set; }
+
+    /// <summary>
+    /// If roles can be mentioned in a message.
+    /// </summary>
+    public bool Roles { get; set; }
+
+    /// <summary>
+    /// If the user to the message that is being replied to are allowed to be mentioned in a message.
+    /// </summary>
+    public bool RepliedUser { get; set; }
+
+    /// <summary>
+    /// If <c>@everyone</c> or <c>@here</c> are allowed to be mentioned in a message.
+    /// </summary>
+    public bool Everyone { get; set; }
+
+    /// <summary>
+    /// The <b>only</b> users that can be mentioned in a message.
+    /// </summary>
+    public HashSet<User> ExemptUsers { get; set; } = [];
+
+    /// <summary>
+    /// The <b>only</b> roles that can be mentioned in a message.
+    /// </summary>
+    public HashSet<Role> ExemptRoles { get; set; } = [];
+
+    /// <summary>
+    /// Initializes a new allowed mentions instance with its fields set to the equivalent of <see cref="AllowedMentions.Default"/>.
+    /// </summary>
+    public AllowedMentions()
+    {
+        Users = true;
+        Roles = false;
+        RepliedUser = true;
+        Everyone = false;
+    }
+
+    /// <summary>
+    /// Initializes a new allowed mentions instance.
+    /// </summary>
+    /// <param name="users">If users can be mentioned in a message.</param>
+    /// <param name="roles">If roles can be mentioned in a message.</param>
+    /// <param name="repliedUser">If the user to the message that is being replied to are allowed to be mentioned in a message.</param>
+    /// <param name="everyone">If <c>@everyone</c> or <c>@here</c> are allowed to be mentioned in a message.</param>
+    public AllowedMentions(bool users, bool roles, bool repliedUser, bool everyone)
+    {
+        Users = users;
+        Roles = roles;
+        RepliedUser = repliedUser;
+        Everyone = everyone;
+    }
+
+    /// <summary>
+    /// Returns an <see cref="AllowedMentions"/> with all of its fields set to <c>true</c>.
+    /// </summary>
+    public static readonly AllowedMentions All = new(users: true, roles: true, repliedUser: true, everyone: true);
+
+    /// <summary>
+    /// Returns an <see cref="AllowedMentions"/> with its fields set to:
+    /// <list type="bullet">
+    ///     <item><c>Users = true</c></item>
+    ///     <item><c>Roles = false</c></item>
+    ///     <item><c>RepliedUser = true</c></item>
+    ///     <item><c>Everyone = false</c></item>
+    /// </list>
+    /// </summary>
+    public static readonly AllowedMentions Default = new();
+
+    /// <summary>
+    /// Returns an <see cref="AllowedMentions"/> with all of its fields set to <c>false</c>.
+    /// </summary>
+    public static readonly AllowedMentions None = new(users: false, roles: false, repliedUser: false, everyone: false);
+
+    internal JSON ToJson()
+    {
+        var parse = new List<string>();
+
+        if (Users)
+            parse.Add("users");
+        if (Roles)
+            parse.Add("roles");
+        if (Everyone)
+            parse.Add("everyone");
+
+        // "users" & "roles" must be removed or else an invalidation error will occur because of mutual exclusivity.
+        if (ExemptUsers.Count == 0 && Users)
+            parse.Remove("users");
+        if (ExemptRoles.Count == 0 && Roles)
+            parse.Remove("roles");
+
+        var roleQuery =
+            from role in ExemptRoles
+            select role.Id.ToString();
+        var userQuery = 
+            from user in ExemptUsers
+            select user.Id.ToString();
+
+        return new JSON
+        {
+            { "parse", parse },
+            { "roles", roleQuery },
+            { "users", userQuery },
+            { "replied_user", RepliedUser }
+        };
+    }
+}
+
+/// <summary>
+/// Represents a poll on a <see cref="Message"/>.
+/// </summary>
+public record Poll
+{
+    // DOCS: https://discord.com/developers/docs/resources/poll#poll-object-poll-object-structure
+    
+    /// <summary>
+    /// The question of the poll.
+    /// </summary>
+    [JsonIgnore]
+    public string Question
+    {
+        get => _question.Text!;
+        set => _question.Text = value;
+    }
+
+    [JsonProperty("question")]
+    private readonly PollMedia _question;
+
+    /// <summary>
+    /// Each of the answers available in the poll, up to 10.
+    /// </summary>
+    [JsonProperty("answers")]
+    public List<PollAnswer> Answers { get; set; }
+
+    /// <summary>
+    /// Number of <b>hours</b> the poll should be open for, up to 32 days.
+    /// </summary>
+    [JsonProperty("duration")]
+    public int Duration { get; set; }
+
+    /// <summary>
+    /// The time when the poll ends.
+    /// </summary>
+    [JsonProperty("expiry")]
+    public DateTime? Expires { get; set; }
+
+    /// <summary>
+    /// Whether a user can select multiple answers.
+    /// </summary>
+    [JsonProperty("allow_multiselect")]
+    public bool IsMultiselectAllowed { get; set; }
+
+    /// <summary>
+    /// The layout type of the poll.
+    /// </summary>
+    [JsonProperty("layout_type")]
+    public PollLayout Layout { get; set; }
+
+    /// <summary>
+    /// The results of the poll.
+    /// </summary>
+    [JsonProperty("results")]
+    public readonly PollResults? Results;
+
+    /// <summary>
+    /// Initializes a new poll instance.
+    /// </summary>
+    /// <param name="question">The question of the poll.</param>
+    /// <param name="answers">Each of the answers available in the poll, up to 10</param>
+    /// <param name="duration">Number of <b>hours</b> the poll should be open for, up to 32 days.</param>
+    /// <param name="allowMultiselect">Whether a user can select multiple answers.</param>
+    /// <param name="layout">The layout type of the poll.</param>
+    public Poll(string question, IEnumerable<PollAnswer> answers, int duration, bool allowMultiselect, PollLayout layout = PollLayout.Default)
+    {
+        _question = new PollMedia(question);
+        Question = _question.Text!;
+        Answers = answers.ToList();
+        Duration = duration;
+        IsMultiselectAllowed = allowMultiselect;
+        Layout = layout;
+    }
+
+    [JsonConstructor]
+    internal Poll(PollMedia question, List<PollAnswer> answers)
+    {
+        _question = question;
+        Answers = answers;
+    }
+}
+
+/// <summary>
+/// Represents various <see cref="Poll"/> values.
+/// </summary>
+public record PollMedia
+{
+    // DOCS: https://discord.com/developers/docs/resources/poll#poll-media-object
+    
+    /// <summary>
+    /// The text of the field.
+    /// </summary>
+    [JsonProperty("text")]
+    public string? Text { get; set; }
+
+    /// <summary>
+    /// The emoji of the field.
+    /// </summary>
+    [JsonProperty("emoji")]
+    public PartialEmoji? Emoji { get; set; }
+
+    /// <summary>
+    /// Initializes a new poll media instance.
+    /// </summary>
+    /// <param name="text">Text of the media.</param>
+    /// <param name="emoji">Emoji of the media.</param>
+    public PollMedia(string text, PartialEmoji? emoji = null)
+    {
+        Text = text;
+        Emoji = emoji;
+    }
+}
+
+/// <summary>
+/// Represents an answer in a <see cref="Poll"/>.
+/// </summary>
+public record PollAnswer
+{
+    // DOCS: https://discord.com/developers/docs/resources/poll#poll-answer-object
+    
+    /// <summary>
+    /// The ID of the answer.
+    /// </summary>
+    [JsonProperty("answer_id")]
+    public int? Id { get; private set; }
+
+    /// <summary>
+    /// The data of the answer.
+    /// </summary>
+    [JsonProperty("poll_media")]
+    public PollMedia Media;
+
+    /// <summary>
+    /// Initializes a new poll answer instance.
+    /// </summary>
+    /// <param name="answer">The media which relates to the answer text/emoji.</param>
+    public PollAnswer(PollMedia answer)
+    {
+        Media = answer;
+    }
+}
+
+/// <summary>
+/// Represents the number of votes for each <see cref="PollAnswer"/>.
+/// </summary>
+public record PollResults
+{
+    // DOCS: https://discord.com/developers/docs/resources/poll#poll-results-object
+    
+    /// <summary>
+    /// Whether the votes have been precisely counted.
+    /// </summary>
+    [JsonProperty("is_finalized")]
+    public bool IsFinalized { get; private set; }
+
+    /// <summary>
+    /// The counts for each answer.
+    /// </summary>
+    [JsonProperty("answer_counts")]
+    public List<PollAnswerCount> AnswerCounts { get; private set; } = null!;
+    
+    private PollResults() { }
+}
+
+/// <summary>
+/// Represents the count for each <see cref="PollAnswer"/>.
+/// </summary>
+public record PollAnswerCount
+{
+    // DOCS: https://discord.com/developers/docs/resources/poll#poll-results-object-poll-answer-count-object-structure
+    
+    /// <summary>
+    /// The <see cref="PollAnswer.Id"/>.
+    /// </summary>
+    [JsonProperty("id")]
+    public int Id { get; private set; }
+
+    /// <summary>
+    /// The number of votes for this answer.
+    /// </summary>
+    [JsonProperty("count")]
+    public int Count { get; private set; }
+
+    /// <summary>
+    /// Whether the current user voted for this answer.
+    /// </summary>
+    [JsonProperty("me_voted")]
+    public bool MeVoted { get; private set; }
+    
+    private PollAnswerCount() { }
+}
+
+/// <summary>
+/// Represents a <see cref="Poll"/> layout.
+/// </summary>
+public enum PollLayout
+{
+    /// <summary>
+    /// Default layout type.
+    /// </summary>
+    Default = 1
 }

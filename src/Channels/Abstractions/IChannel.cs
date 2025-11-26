@@ -2,6 +2,7 @@ using System.Text.Json;
 using Discord.Channels.Models;
 using Discord.Models;
 using Discord.Net;
+using Discord.Utility;
 using Newtonsoft.Json;
 namespace Discord.Channels.Abstractions;
 
@@ -109,6 +110,15 @@ public abstract class GuildChannel : IChannel
     /// </summary>
     [JsonProperty("rate_limit_per_user")]
     public int? SlowModeSeconds { get; internal set; }
+
+    #region CUSTOM
+
+    /// <summary>
+    /// Mention the channel.
+    /// </summary>
+    public string Mention => Markdown.MentionChannel(Id);
+
+    #endregion
     
     /// <inheritdoc/>
     public async Task DeleteAsync(string? reason = null) =>
@@ -216,13 +226,40 @@ public interface IPermissionEditable
 /// </summary>
 public interface IMessageable : IChannel
 {
-    // TODO - Still needs all other send capabilities
     /// <summary>
-    /// Sends a message to the channel.
+    /// Request messages.
     /// </summary>
-    /// <param name="content">Contents of the message.</param>
+    /// <param name="history">Timestamp label for the messages to return.</param>
+    /// <param name="dt">Date/time of the messages to look for.</param>
+    /// <param name="limit">Maximum amount of messages to return (1-100).</param>
+    /// <returns>The requested messages.</returns>
+    /// <remarks>Unlike <see cref="Bot.Messages"/> this is an API call.</remarks>
+    public Task<IReadOnlyCollection<Message>> RequestMessages(MessageHistory history = MessageHistory.Before,
+        DateTime? dt = null, int limit = 50);
+    
+    /// <summary>
+    /// Request a message.
+    /// </summary>
+    /// <param name="id">ID of the message.</param>
+    /// <returns>The requested message.</returns>
+    /// <remarks>Unlike <see cref="Bot.GetMessage"/> this is an API call.</remarks>
+    public Task<Message> RequestMessage(ulong id);
+    
+    /// <summary>
+    /// Send a message to the channel.
+    /// </summary>
+    /// <param name="content">Message contents (up to 2000 characters).</param>
+    /// <param name="tts">Whether this is a TTS message.</param>
+    /// <param name="embeds">Embeds (max 10), up to 6000 characters total.</param>
+    /// <param name="allowedMentions">Allowed mentions for the message.</param>
+    /// <param name="stickers">Up to 3 stickers to send in the message.</param>
+    /// <param name="poll">A poll.</param>
+    /// <param name="files">Files to upload with the message.</param>
     /// <returns>The message that was sent.</returns>
-    public Task<Message> SendAsync(string? content = null);
+    /// <remarks>Polls and files cannot be in the same message.</remarks>
+    public Task<Message> SendAsync(string? content = null, bool tts = false, IEnumerable<Embed>? embeds = null,
+        AllowedMentions? allowedMentions = null, IEnumerable<GuildSticker>? stickers = null, Poll? poll = null,
+        ICollection<DFile>? files = null);
 
     /// <summary>
     /// Trigger the typing indicator.

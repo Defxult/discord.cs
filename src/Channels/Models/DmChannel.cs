@@ -41,8 +41,19 @@ public class DmChannel : IMessageable
         await ChannelServicer.DeleteAsync(this, reason);
     
     /// <inheritdoc/>
-    public async Task<Message> SendAsync(string? content = null) =>
-        await ChannelServicer.SendAsync(this, content);
+    public async Task<IReadOnlyCollection<Message>> RequestMessages(MessageHistory history = MessageHistory.Before,
+        DateTime? dt = null, int limit = 50) =>
+        await Bot._rest.GetChannelMessages(Id, history, dt, limit);
+
+    /// <inheritdoc/>
+    public async Task<Message> RequestMessage(ulong id) =>
+        await Bot._rest.GetChannelMessage(Id, id);
+
+    /// <inheritdoc/>
+    public async Task<Message> SendAsync(string? content = null, bool tts = false, IEnumerable<Embed>? embeds = null,
+        AllowedMentions? allowedMentions = null, IEnumerable<GuildSticker>? stickers = null, Poll? poll = null,
+        ICollection<DFile>? files = null) =>
+        await ChannelServicer.SendAsync(this, content, tts, embeds, allowedMentions, stickers, poll, files);
 
     /// <inheritdoc/>
     public async Task TriggerTypingAsync(Func<Task>? func = null, CancellationToken ct = default) =>

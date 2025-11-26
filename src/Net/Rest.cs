@@ -214,6 +214,41 @@ internal class Rest
     {
         await RequestAsync(Post, Route($"/channels/{messageable.Id}/typing"));
     }
+    
+    // Creates a new thread from an existing message. Returns a channel on success, and a 400 BAD REQUEST on invalid parameters.
+    // Fires a Thread Create and a Message Update Gateway event.
+    // 
+    // When called on a GUILD_TEXT channel, creates a PUBLIC_THREAD. When called on a GUILD_ANNOUNCEMENT channel, creates
+    // a ANNOUNCEMENT_THREAD. Does not work on a GUILD_FORUM or a GUILD_MEDIA channel. The id of the created thread will
+    // be the same as the id of the source message, and as such a message can only have a single thread created from it.
+    // https://discord.com/developers/docs/resources/channel#start-thread-from-message
+    internal async Task<ThreadChannel> StartThreadFromMessage(Guild guild, ulong channelId, ulong messageId, JSON payload, string? reason)
+    {
+        string data = await RequestAsync(Post, Route($"/channels/{channelId}/messages/{messageId}/threads"),
+            payload, reason);
+        var thread = JsonConvert.DeserializeObject<ThreadChannel>(data)!;
+        SetThreadValues([thread], guild);
+        return thread;
+    }
+    
+    // Creates a new thread that is not connected to an existing message. Returns a channel on success, and a 400
+    // BAD REQUEST on invalid parameters. Fires a Thread Create Gateway event.
+    // https://discord.com/developers/docs/resources/channel#start-thread-without-message
+    internal async Task<ThreadChannel> StartThreadWithoutMessage(ulong channelId, Guild guild, string name,
+        bool invitable, ThreadArchiveDuration duration, int? slowModeDelaySeconds, string? reason)
+    {
+        var payload = new JSON
+        {
+            { "name", name },
+            { "invitable", invitable },
+            { "auto_archive_duration", duration },
+            { "rate_limit_per_user", slowModeDelaySeconds ?? 0 }
+        };
+        string data = await RequestAsync(Post, Route($"/channels/{channelId}/threads"), payload, reason);
+        var thread = JsonConvert.DeserializeObject<ThreadChannel>(data)!;
+        SetThreadValues([thread], guild);
+        return thread;
+    }
 
     #endregion
 
@@ -516,7 +551,16 @@ internal class Rest
     {
         string data = await RequestAsync(Get, Route($"/guilds/{guildId}/channels"));
         var channelObjs = JsonConvert.DeserializeObject<List<JSON>>(data)!;
-        return GuildChannel.ParseChannels(channelObjs);
+        var channels = GuildChannel.ParseChannels(channelObjs);
+        if (_bot.GetGuild(guildId) is { } guild)
+        {
+            channels.ForEach(gc =>
+            {
+                gc.Bot = _bot;
+                gc.Guild = guild;
+            });
+        }
+        return channels;
     }
 
     internal void SetRoleValues(IEnumerable<Role> roles, ulong guildId)
@@ -948,12 +992,46 @@ internal class Rest
     internal void SetMessageValues(IEnumerable<Message> message)
     {
         foreach (var m in message)
-        {
             m.Bot = _bot;
-        }
+    }
+    
+    // Retrieves the messages in a channel. Returns an array of message objects from newest to oldest on success.
+    // 
+    // If operating on a guild channel, this endpoint requires the current user to have the VIEW_CHANNEL permission.
+    // If the channel is a voice channel, they must also have the CONNECT permission.
+    // 
+    // If the current user is missing the READ_MESSAGE_HISTORY permission in the channel, then no messages will be returned.
+    // https://discord.com/developers/docs/resources/message#get-channel-messages
+    internal async Task<List<Message>> GetChannelMessages(ulong channelId, MessageHistory history, DateTime? dt, int limit)
+    {
+        var dtSnowflake = Util.DateTimeToSnowflake(dt ?? DateTime.UtcNow);
+        var query = history switch
+        {
+            MessageHistory.Before => "?before",
+            MessageHistory.After => "?after",
+            MessageHistory.Around => "?around"
+        };
+        var endpoint = $"/channels/{channelId}/messages{query}={dtSnowflake}&limit={limit}";
+        string data = await RequestAsync(Get, Route(endpoint));
+        var messages = JsonConvert.DeserializeObject<List<Message>>(data)!;
+        SetMessageValues(messages);
+        return messages;
+    }
+    
+    // Retrieves a specific message in the channel. Returns a message object on success.
+    // 
+    // If operating on a guild channel, this endpoint requires the current user to have the VIEW_CHANNEL and
+    // READ_MESSAGE_HISTORY permissions. If the channel is a voice channel, they must also have the CONNECT permission.
+    // https://discord.com/developers/docs/resources/message#get-channel-message
+    internal async Task<Message> GetChannelMessage(ulong channelId, ulong messageId)
+    {
+        string data = await RequestAsync(Get, Route($"/channels/{channelId}/messages/{messageId}"));
+        var message = JsonConvert.DeserializeObject<Message>(data)!;
+        SetMessageValues([message]);
+        return message;
     }
 
-    // DOCS: https://discord.com/developers/docs/resources/message#create-message
+    // https://discord.com/developers/docs/resources/message#create-message
     internal async Task<Message> CreateMessageAsync(ulong channelId, MultipartFormDataContent form)
     {
         string data = await RequestAsync(Post, Route($"/channels/{channelId}/messages"), form);

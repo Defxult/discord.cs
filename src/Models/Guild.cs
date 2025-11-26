@@ -434,16 +434,16 @@ public class Guild : IEquatable<Guild>
     public async Task EditAsync(GuildEdit edit, string? reason = null)
         => await Bot._rest.ModifyGuildAsync(Id, edit, reason);
     
-    // /// <summary>
-    // /// Requests all channels in the guild.
-    // /// </summary>
-    // /// <returns> All channels in the guild the bot has access to.</returns>
-    // /// <remarks>It's generally preferred to use <see cref="Channels"/> unless this is needed.</remarks>
-    // public async Task<ICollection<IGuildChannel>> RequestChannelsAsync() =>
-    //     await Bot._rest.GetGuildChannelsAsync(Id);
+    /// <summary>
+    /// Requests all channels in the guild.
+    /// </summary>
+    /// <returns> All channels in the guild the bot has access to.</returns>
+    /// <remarks>It's generally preferred to use <see cref="Channels"/> unless this is needed.</remarks>
+    public async Task<ICollection<GuildChannel>> RequestChannelsAsync() =>
+        await Bot._rest.GetGuildChannelsAsync(Id);
     
     /// <summary>
-    /// Retrieve a channel from the cache.
+    /// Retrieve a guild channel from the cache.
     /// </summary>
     /// <param name="id">Channel ID.</param>
     /// <returns>The channel matching the given ID, or <c>null</c> if not found.</returns>
