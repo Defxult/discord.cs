@@ -7,7 +7,7 @@
         <LangVersion>default</LangVersion>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Discord.cs</PackageId>
-        <Version>0.0.2-alpha</Version>
+        <Version>0.0.3-alpha</Version>
         <Title>Discord.cs</Title>
         <Authors>Defxult</Authors>
         <Description>A Discord API library.</Description>
