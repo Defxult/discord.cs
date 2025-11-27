@@ -9,7 +9,7 @@ namespace Discord.Channels.Models;
 /// <summary>
 /// Represents a <see cref="GuildChannel"/> that can only contain <see cref="ThreadChannel"/>.
 /// </summary>
-public class ForumChannel : GuildChannel, IThreadable, IInvitable, IPermissionEditable
+public class ForumChannel : GuildChannel, IThreadable, IInvitable, IPermissionEditable, ICoreGuildChannel
 {
     /// <inheritdoc/>
     [JsonProperty("default_auto_archive_duration")]
@@ -95,6 +95,14 @@ public class ForumChannel : GuildChannel, IThreadable, IInvitable, IPermissionEd
     /// <inheritdoc/>
     public async Task DeletePermissionsAsync(ulong id, string? reason = null) =>
         await ChannelServicer.DeletePermissions(this, id, reason);
+
+    /// <inheritdoc/>
+    public async Task<Webhook> CreateWebhookAsync(string name, DFile? avatar = null, string? reason = null) =>
+        await Bot._rest.CreateWebhookAsync(Id, name, avatar, reason);
+    
+    /// <inheritdoc/>
+    public async Task<IReadOnlyCollection<Webhook>> WebhooksAsync() =>
+        await Bot._rest.GetChannelWebhooksAsync(Id);
 }
 
 /// <summary>

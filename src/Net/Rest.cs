@@ -1263,15 +1263,111 @@ internal class Rest
 
     #region WEBHOOK
 
+    private void SetWebhookValues(IEnumerable<Webhook> webhooks)
+    {
+        foreach (var webhook in webhooks)
+            webhook.Bot = _bot;
+    }
+    
+    // Creates a new webhook and returns a webhook object on success. Requires the MANAGE_WEBHOOKS permission. Fires a
+    // Webhooks Update Gateway event.
+    // 
+    // An error will be returned if a webhook name (name) is not valid. A webhook name is valid if:
+    // 
+    // It does not contain the substrings clyde or discord (case-insensitive)
+    // It follows the nickname guidelines in the Usernames and Nicknames documentation, with an exception that webhook
+    // names can be up to 80 characters
+    // https://discord.com/developers/docs/resources/webhook#create-webhook
+    internal async Task<Webhook> CreateWebhookAsync(ulong channelId, string name, DFile? icon, string? reason)
+    {
+        var payload = new JSON { { "name", name } };
+        if (icon != null)
+            payload["avatar"] = icon._mimeTypeBase64;
+        string data = await RequestAsync(Post, Route($"/channels/{channelId}/webhooks"), payload, reason);
+        var webhook = JsonConvert.DeserializeObject<Webhook>(data)!;
+        SetWebhookValues([webhook]);
+        return webhook;
+    }
+    
+    // Returns a list of channel webhook objects. Requires the MANAGE_WEBHOOKS permission.
+    // https://discord.com/developers/docs/resources/webhook#get-channel-webhooks
+    internal async Task<List<Webhook>> GetChannelWebhooksAsync(ulong channelId)
+    {
+        string data = await RequestAsync(Get, Route($"/channels/{channelId}/webhooks"));
+        var webhooks = JsonConvert.DeserializeObject<List<Webhook>>(data)!;
+        SetWebhookValues(webhooks);
+        return webhooks;
+    }
+    
+    // Returns a list of guild webhook objects. Requires the MANAGE_WEBHOOKS permission.
+    // https://discord.com/developers/docs/resources/webhook#get-guild-webhooks
+    internal async Task<List<Webhook>> GetGuildWebhooksAsync(ulong guildId)
+    {
+        string data = await RequestAsync(Get, Route($"/guilds/{guildId}/webhooks"));
+        var webhooks = JsonConvert.DeserializeObject<List<Webhook>>(data)!;
+        SetWebhookValues(webhooks);
+        return webhooks;
+    }
+
     // Returns the new webhook object for the given id.
     // 
     // This request requires the MANAGE_WEBHOOKS permission unless the application making the request owns the webhook.
     // https://discord.com/developers/docs/resources/webhook#get-webhook
-    internal async Task<Webhook> GetWebhookAsync(ulong id)
+    internal async Task<Webhook> GetWebhookAsync(ulong webhookId)
     {
-        string data = await RequestAsync(Get, Route($"/webhooks/{id}"));
-        return JsonConvert.DeserializeObject<Webhook>(data)!;
+        string data = await RequestAsync(Get, Route($"/webhooks/{webhookId}"));
+        var webhook = JsonConvert.DeserializeObject<Webhook>(data)!;
+        SetWebhookValues([webhook]);
+        return webhook;
     }
+    
+    // Same as above, except this call does not require authentication and returns no user in the webhook object.
+    // https://discord.com/developers/docs/resources/webhook#get-webhook-with-token
+    internal static async Task<Webhook> GetWebhookWithTokenAsync(ulong webhookId, string webhookToken, HttpClient http)
+    {
+        string data = await http.GetStringAsync(Route($"/webhooks/{webhookId}/{webhookToken}"));
+        var webhook = JsonConvert.DeserializeObject<Webhook>(data)!;
+        return webhook;
+    }
+    
+    // Modify a webhook. Requires the MANAGE_WEBHOOKS permission. Returns the updated webhook object on success.
+    // Fires a Webhooks Update Gateway event.
+    // https://discord.com/developers/docs/resources/webhook#modify-webhook
+    internal async Task<Webhook> ModifyWebhookAsync(ulong webhookId, WebhookEdit edit, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/webhooks/{webhookId}"), edit._payload, reason);
+        var webhook = JsonConvert.DeserializeObject<Webhook>(data)!;
+        SetWebhookValues([webhook]);
+        return webhook;
+    }
+    
+    // Same as above, except this call does not require authentication, does not accept a channel_id parameter in the body,
+    // and does not return a user in the webhook object.
+    // https://discord.com/developers/docs/resources/webhook#modify-webhook-with-token
+    internal static async Task<Webhook> ModifyWebhookWithTokenAsync(ulong webhookId, string webhookToken,
+        WebhookEdit edit, HttpClient http)
+    {
+        var content = new StringContent(JsonConvert.SerializeObject(edit._payload));
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        
+        var response = await http.PatchAsync(Route($"/webhooks/{webhookId}/{webhookToken}"), content);
+        var json = await response.Content.ReadAsStringAsync();
+        
+        if (response.IsSuccessStatusCode) return JsonConvert.DeserializeObject<Webhook>(json)!;
+        var errorMessage = Convert.ToString(JsonConvert.DeserializeObject<JSON>(json)!.Values.First());
+        throw new HttpRequestException(errorMessage);
+    }
+    
+    // Delete a webhook permanently. Requires the MANAGE_WEBHOOKS permission. Returns a 204 No Content response on success.
+    // Fires a Webhooks Update Gateway event.
+    // https://discord.com/developers/docs/resources/webhook#delete-webhook
+    internal async Task DeleteWebhookAsync(ulong webhookId, string? reason) =>
+        await RequestAsync(Delete, Route($"/webhooks/{webhookId}"), auditReason: reason);
+    
+    // Same as above, except this call does not require authentication.
+    // https://discord.com/developers/docs/resources/webhook#delete-webhook-with-token
+    internal static async Task DeleteWebhookWithTokenAsync(ulong webhookId, string webhookToken, HttpClient http) =>
+        await http.DeleteAsync(Route($"/webhooks/{webhookId}/{webhookToken}"));
 
     #endregion
     

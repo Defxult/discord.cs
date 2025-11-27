@@ -272,6 +272,27 @@ public interface IMessageable : IChannel
     public Task TriggerTypingAsync(Func<Task>? func = null, CancellationToken ct = default);
 }
 
+public interface ICoreGuildChannel
+{
+    /// <summary>
+    /// Create a webhook.
+    /// </summary>
+    /// <param name="name">Name of the webhook (1-80 characters). Cannot contain the substrings "clyde" or "discord"
+    ///     (case-insensitive).</param>
+    /// <param name="avatar">Webhook avatar.</param>
+    /// <param name="reason">Reason for creating the webhook. This is displayed in the audit-log.</param>
+    /// <returns>The created webhook.</returns>
+    /// <remarks>Requires <see cref="Permission.ManageWebhooks"/>.</remarks>
+    public Task<Webhook> CreateWebhookAsync(string name, DFile? avatar = null, string? reason = null);
+
+    /// <summary>
+    /// Requests all webhooks for the channel.
+    /// </summary>
+    /// <returns>All webhooks for the channel.</returns>
+    /// <remarks>Requires <see cref="Permission.ManageWebhooks"/>.</remarks>
+    public Task<IReadOnlyCollection<Webhook>> WebhooksAsync();
+}
+
 /// <summary>
 /// Represents a <see cref="GuildChannel"/> where a <see cref="ThreadChannel"/> can be created.
 /// </summary>

@@ -9,7 +9,7 @@ namespace Discord.Channels.Models;
 /// <summary>
 /// Represents a voice channel for a <see cref="Guild"/>.
 /// </summary>
-public class VoiceChannel : GuildChannel, IMessageable, IVoiceChannel, IInvitable, IPermissionEditable
+public class VoiceChannel : GuildChannel, IMessageable, IVoiceChannel, IInvitable, IPermissionEditable, ICoreGuildChannel
 {
     /// <inheritdoc/>
     [JsonProperty("bitrate")]
@@ -59,6 +59,14 @@ public class VoiceChannel : GuildChannel, IMessageable, IVoiceChannel, IInvitabl
     /// <inheritdoc/>
     public async Task DeletePermissionsAsync(ulong id, string? reason = null) =>
         await ChannelServicer.DeletePermissions(this, id, reason);
+
+    /// <inheritdoc/>
+    public async Task<Webhook> CreateWebhookAsync(string name, DFile? avatar = null, string? reason = null) =>
+        await Bot._rest.CreateWebhookAsync(Id, name, avatar, reason);
+    
+    /// <inheritdoc/>
+    public async Task<IReadOnlyCollection<Webhook>> WebhooksAsync() =>
+        await Bot._rest.GetChannelWebhooksAsync(Id);
 }
 
 /// <summary>

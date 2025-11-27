@@ -8,7 +8,7 @@ namespace Discord.Channels.Models;
 /// <summary>
 /// Represents an announcement channel for a <see cref="Guild"/>.
 /// </summary>
-public class AnnouncementChannel : GuildChannel, IMessageable, IThreadable, IInvitable, IPermissionEditable
+public class AnnouncementChannel : GuildChannel, IMessageable, IThreadable, IInvitable, IPermissionEditable, ICoreGuildChannel
 {
     /// <inheritdoc/>
     [JsonProperty("default_auto_archive_duration")]
@@ -70,4 +70,12 @@ public class AnnouncementChannel : GuildChannel, IMessageable, IThreadable, IInv
     /// <remarks>Requires <see cref="Permission.ManageWebhooks"/>.</remarks>
     public async Task<Webhook> FollowAsync(TextChannel channel, string? reason = null) =>
         await Bot._rest.FollowAnnouncementChannel(Id, channel.Id, reason);
+
+    /// <inheritdoc/>
+    public async Task<Webhook> CreateWebhookAsync(string name, DFile? avatar = null, string? reason = null) =>
+        await Bot._rest.CreateWebhookAsync(Id, name, avatar, reason);
+
+    /// <inheritdoc/>
+    public async Task<IReadOnlyCollection<Webhook>> WebhooksAsync() =>
+        await Bot._rest.GetChannelWebhooksAsync(Id);
 }

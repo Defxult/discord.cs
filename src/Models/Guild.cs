@@ -712,6 +712,14 @@ public class Guild : IEquatable<Guild>
         await Bot._rest.SearchGuildMembersAsync(Id, startsWith, limit);
 
     /// <summary>
+    /// Requests all webhooks in the guild.
+    /// </summary>
+    /// <returns>All guild webhooks.</returns>
+    /// <remarks>Requires <see cref="Permission.ManageWebhooks"/>.</remarks>
+    public async Task<ICollection<Webhook>> WebhooksAsync() =>
+        await Bot._rest.GetGuildWebhooksAsync(Id);
+
+    /// <summary>
     /// Requests all members in the guild. Requires <see cref="Intents.GuildMembers"/>. All members are cached regardless
     /// of cache manager settings.
     /// </summary>
@@ -1235,7 +1243,7 @@ public record SoundboardSound
     /// <summary>
     /// Your bot instance.
     /// </summary>
-    public Bot Bot { get; internal set; }
+    public Bot Bot { get; internal set; } = null!;
 
     /// <summary>
     /// Whether this is a default soundboard sound.

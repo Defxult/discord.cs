@@ -103,6 +103,15 @@ public class Bot
     }
     
     #region PUBLIC
+    
+    /// <summary>
+    /// Request a webhook.
+    /// </summary>
+    /// <param name="id">ID of the webhook.</param>
+    /// <returns>The requested webhook.</returns>
+    /// <remarks>Requires <see cref="Permission.ManageWebhooks"/> unless the application owns the webhook.</remarks>
+    public async Task<Webhook> RequestWebhookAsync(ulong id) =>
+        await _rest.GetWebhookAsync(id);
 
     /// <summary>
     /// Retrieve a channel from the cache. This searches through all guild channels, threads, as well as DM channels.
