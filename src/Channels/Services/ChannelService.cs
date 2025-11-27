@@ -58,11 +58,6 @@ internal static class ChannelServicer
     internal static async Task DeleteAsync(IChannel channel, string? reason = null) =>
         await channel.Bot._rest.DeleteCloseChannelAsync(channel.Id, reason);
 
-    internal static async Task RequestMessages(IMessageable messageable, MessageHistory history, DateTime dt, int limit)
-    {
-        
-    }
-
     internal static async Task<Message> SendAsync(IMessageable messageable, string? content, bool tts,
         IEnumerable<Embed>? embeds, AllowedMentions? allowedMentions, IEnumerable<GuildSticker>? stickers, Poll? poll,
         ICollection<DFile>? files)

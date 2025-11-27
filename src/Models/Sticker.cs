@@ -207,9 +207,9 @@ public class GuildSticker : IEquatable<GuildSticker>
 /// <summary>
 /// Represents the values that can be edited for a <see cref="GuildSticker"/>.
 /// </summary>
-public struct GuildStickerEdit
+public readonly struct GuildStickerEdit
 {
-    internal JSON _payload = [];
+    internal readonly JSON _payload = [];
 
     /// <summary>
     /// Initializes a new guild sticker edit instance.
@@ -246,6 +246,9 @@ public struct GuildStickerEdit
     }
 }
 
+/// <summary>
+/// Represents a <see cref="GuildSticker"/> type.
+/// </summary>
 public enum StickerType
 {
     // DOCS: https://discord.com/developers/docs/resources/sticker#sticker-object-sticker-types
