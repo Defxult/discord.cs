@@ -47,7 +47,7 @@ public class Webhook
     /// Default user avatar of the webhook.
     /// </summary>
     public Media? Avatar => _defaultAvatarHash != null
-        ? new Media(_defaultAvatarHash, $"/embed/avatars/{_defaultAvatarHash}")
+        ? new Media(_defaultAvatarHash, $"/avatars/{Id}/{_defaultAvatarHash}")
         : null;
     [JsonProperty("avatar")] private string? _defaultAvatarHash;
     
