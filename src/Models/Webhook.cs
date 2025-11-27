@@ -112,7 +112,7 @@ public class Webhook
     #region STATIC
 
     /// <summary>
-    /// Request a webhook based off its URL.
+    /// Request a webhook based on its URL.
     /// </summary>
     /// <param name="url">Webhook URL.</param>
     /// <param name="bot">Bot instance to assist with initialization.</param>
@@ -121,7 +121,6 @@ public class Webhook
     /// <exception cref="FormatException">Parameter <paramref name="url"/> was not in the correct format.</exception>
     public static async Task<Webhook> FromUrl(string url, Bot bot, HttpClient http)
     {
-        // https://discord.com/api/webhooks/1443490638451445852/4611V3J4GklLCB7OK6NBcPv4Doc7wVDDpL7XTj0xyHwkJa7KgPUdo7CF8Ye_wd3hJLvl
         var match = Regex.Match(url, @"https:\/\/discord[.]com\/api\/webhooks\/\d{17,19}\/.+");
         if (!match.Success) throw new FormatException("Parameter 'url' was not in the proper webhook URL format.");
         var splits = match.Value.Split("/");
