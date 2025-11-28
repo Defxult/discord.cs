@@ -82,51 +82,20 @@ internal class Rest
         }
     }
 
+    internal void SetChannelValuesIndividual(GuildChannel channel, Guild guild)
+    {
+        channel.Bot = _bot;
+        channel.Guild = guild;
+    }
+
     private void SetChannelValues(Guild guild)
     {
-        // Messageables
-        guild.TextChannels.ToList().ForEach(t => 
+        guild._channels.ForEach(channel =>
         {
-            t.Bot = _bot;
-            t.Guild = guild;
+            channel.Bot = _bot;
+            channel.Guild = guild;
+            channel.GuildId = guild.Id;
         });
-        guild.AnnouncementChannels.ToList().ForEach(t => 
-        {
-            t.Bot = _bot;
-            t.Guild = guild;
-        });
-        guild.VoiceChannels.ToList().ForEach(t => 
-        {
-            t.Bot = _bot;
-            t.Guild = guild;
-        });
-        guild.StageChannels.ToList().ForEach(t => 
-        {
-            t.Bot = _bot;
-            t.Guild = guild;
-        });
-        guild.Threads.ToList().ForEach(t => 
-        {
-            t.Bot = _bot;
-            t.Guild = guild;
-        });
-        
-        // Non-messageables
-        foreach (var c in guild.CategoryChannels) 
-        { 
-            c.Guild = guild; 
-            c.Bot = _bot;
-        }
-        foreach (var c in guild.ForumChannels) 
-        {
-            c.Guild = guild;
-            c.Bot = _bot;
-        }
-        foreach (var c in guild.MediaChannels) 
-        {
-            c.Guild = guild;
-            c.Bot = _bot;
-        }
     }
     
     // Update a channel's settings. Returns a channel on success, and a 400 BAD REQUEST on invalid parameters.
@@ -334,7 +303,7 @@ internal class Rest
     {
         string data = await RequestAsync(Get, Route($"/applications/{applicationId}/emojis"));
         var element = JsonDocument.Parse(data).RootElement.GetProperty("items");
-        var emojis = DiscordGatewayClient.Deserialize<List<Emoji>>(element);
+        var emojis = Gateway.Deserialize<List<Emoji>>(element);
         SetEmojiValues(emojis, null);
         return emojis;
     }
@@ -498,7 +467,7 @@ internal class Rest
         var doc = JsonDocument.Parse(data);
         var users = new List<User>();
         foreach (var ele in doc.RootElement.EnumerateArray())
-            users.Add(DiscordGatewayClient.Deserialize<User>(ele.GetProperty("user")));
+            users.Add(Gateway.Deserialize<User>(ele.GetProperty("user")));
         return users;
     }
 
@@ -774,8 +743,8 @@ internal class Rest
     {
         string data = await RequestAsync(Post, Route($"/guilds/{guildId}/bulk-ban"), payload, reason);
         var doc = JsonDocument.Parse(data);
-        var bannedUsers = DiscordGatewayClient.Deserialize<List<ulong>>(doc.RootElement.GetProperty("banned_users"));
-        var failedUsers = DiscordGatewayClient.Deserialize<List<ulong>>(doc.RootElement.GetProperty("failed_users"));
+        var bannedUsers = Gateway.Deserialize<List<ulong>>(doc.RootElement.GetProperty("banned_users"));
+        var failedUsers = Gateway.Deserialize<List<ulong>>(doc.RootElement.GetProperty("failed_users"));
         return (bannedUsers, failedUsers);
     }
     
@@ -1178,7 +1147,7 @@ internal class Rest
         string data = await RequestAsync(Get, Route($"/guilds/{guildId}/soundboard-sounds"));
         var doc = JsonDocument.Parse(data);
         var element = doc.RootElement.GetProperty("items");
-        var sounds = DiscordGatewayClient.Deserialize<List<SoundboardSound>>(element);
+        var sounds = Gateway.Deserialize<List<SoundboardSound>>(element);
         SetSoundboardSoundValues(sounds);
         return sounds;
     }
@@ -1229,6 +1198,57 @@ internal class Rest
     {
         await RequestAsync(Delete, Route($"/guilds/{guildId}/soundboard-sounds/{soundId}"), reason);
     }
+
+    #endregion
+
+    #region STAGE INSTANCE
+
+    private void SetStageInstanceValues(StageInstance stageInstance)
+    {
+        stageInstance.Bot = _bot;
+    }
+
+    // Creates a new Stage instance associated to a Stage channel. Returns that Stage instance. Fires a Stage Instance
+    // Create Gateway event.
+    // 
+    // Requires the user to be a moderator of the Stage channel.
+    // https://discord.com/developers/docs/resources/stage-instance#create-stage-instance
+    internal async Task<StageInstance> CreateStageInstanceAsync(JSON payload, string? reason)
+    {
+        string data = await RequestAsync(Post, Route("/stage-instances"), payload, reason);
+        var stageInstance = JsonConvert.DeserializeObject<StageInstance>(data)!;
+        SetStageInstanceValues(stageInstance);
+        return stageInstance;
+    }
+    
+    // Gets the stage instance associated with the Stage channel, if it exists.
+    // https://discord.com/developers/docs/resources/stage-instance#get-stage-instance
+    internal async Task<StageInstance> GetStageInstanceAsync(ulong stageChannelId)
+    {
+        string data = await RequestAsync(Get, Route($"/stage-instances/{stageChannelId}"));
+        var stageInstance = JsonConvert.DeserializeObject<StageInstance>(data)!;
+        SetStageInstanceValues(stageInstance);
+        return stageInstance;
+    }
+    
+    // Updates fields of an existing Stage instance. Returns the updated Stage instance. Fires a Stage Instance Update Gateway event.
+    // 
+    // Requires the user to be a moderator of the Stage channel.
+    // https://discord.com/developers/docs/resources/stage-instance#modify-stage-instance
+    internal async Task<StageInstance> ModifyStageInstance(ulong stageChannelId, StageInstanceEdit edit, string? reason)
+    {
+        string data = await RequestAsync(Patch, Route($"/stage-instances/{stageChannelId}"), edit._payload, reason);
+        var stageInstance = JsonConvert.DeserializeObject<StageInstance>(data)!;
+        SetStageInstanceValues(stageInstance);
+        return stageInstance;
+    }
+    
+    // Deletes the Stage instance. Returns 204 No Content. Fires a Stage Instance Delete Gateway event.
+    // 
+    // Requires the user to be a moderator of the Stage channel.
+    // https://discord.com/developers/docs/resources/stage-instance#delete-stage-instance
+    internal async Task DeleteStageInstanceAsync(ulong stageChannelId, string? reason) => 
+        await RequestAsync(Delete, Route($"/stage-instances/{stageChannelId}"), auditReason: reason);
 
     #endregion
     

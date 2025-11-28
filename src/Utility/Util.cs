@@ -87,7 +87,7 @@ public static class Util
     {
         var document = JsonDocument.Parse(json);
         document.RootElement.TryGetProperty(key, out JsonElement element);
-        return DiscordGatewayClient.Deserialize<T>(element);
+        return Gateway.Deserialize<T>(element);
     }
     
     internal static List<T> FromBitfield<T>(int value)
@@ -97,6 +97,14 @@ public static class Util
             if ((value & (int)flag) == (int)flag)
                 converted.Add((T)flag);
         return converted;
+    }
+
+    internal static ulong FromFlags<T>(ICollection<T> flags) where T : Enum
+    {
+        ulong value = 0;
+        foreach (var flag in flags)
+            value |= Convert.ToUInt64(flag);
+        return value;
     }
 }
 

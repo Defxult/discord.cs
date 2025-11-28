@@ -34,7 +34,7 @@ public class Message : IEquatable<Message>
     public required User Author { get; init; }
     
     /// <summary>
-    /// Content of the message. Will be an empty string if <see cref="Intents.MessageContent"/> is disabled via
+    /// Content of the message. Will be an empty string if <see cref="Intent.MessageContent"/> is disabled via
     /// the <see cref="Bot"/> constructor or Developer Portal.
     /// </summary>
     [JsonProperty("content")]
@@ -276,7 +276,7 @@ public record Reaction
         var normal = Convert.ToInt32(count_details["normal"]);
         CountDetails = (burst, normal);
         var doc = JsonDocument.Parse(JsonConvert.SerializeObject(emoji));
-        Emoji = DiscordGatewayClient.Deserialize<PartialEmoji>(doc.RootElement);
+        Emoji = Gateway.Deserialize<PartialEmoji>(doc.RootElement);
         Colors = burst_colors.Select(val => new Color(val)).ToList();
     }
 }

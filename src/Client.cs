@@ -46,8 +46,8 @@ public class Bot
     /// <summary>
     /// Events that the bot can listen for.
     /// </summary>
-    public DiscordGatewayClient Events => _gateway;
-    internal readonly DiscordGatewayClient _gateway;
+    public Gateway Events => _gateway;
+    internal readonly Gateway _gateway;
 
     /// <summary>
     /// A simple way to store items that are related to the bot's usage. This library never processes the information in said storage,
@@ -58,7 +58,7 @@ public class Bot
     /// <summary>
     /// The bots gateway intents. Handles which events are dispatched by Discord.
     /// </summary>
-    public Intents Intents { get; }
+    public Intent Intents { get; }
     
     /// <summary>
     /// Controls what will be cached.
@@ -84,7 +84,7 @@ public class Bot
     /// <param name="cacheManager">Controls what will be cached. If <c>null</c>, defaults to <see cref="CacheManager.Default"/>.
     /// </param>
     /// <exception cref="DiscordException">Bot token was not set prior to instantiation.</exception>
-    public Bot(Intents intents, int shardId = 0, CacheManager? cacheManager = null)
+    public Bot(Intent intents, int shardId = 0, CacheManager? cacheManager = null)
     {
         if (Token is null) throw new DiscordException("Bot token not set");
         Intents = intents;
@@ -93,7 +93,7 @@ public class Bot
         // This needs to be before the instantiation of the gateway.
         _rest = new Rest(this);
         
-        _gateway = new DiscordGatewayClient(this, intents);
+        _gateway = new Gateway(this, intents);
         CacheManager = cacheManager ?? CacheManager.Default;
         _messageCacheTimer = new Timer(_ =>
         {

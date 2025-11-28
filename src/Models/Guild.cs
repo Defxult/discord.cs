@@ -292,7 +292,7 @@ public class Guild : IEquatable<Guild>
     public bool IsUnavailable { get; internal set; }
 
     /// <summary>
-    /// Total number of members in this guild. Requires <see cref="Intents.GuildMembers"/> to be accurate.
+    /// Total number of members in this guild. Requires <see cref="Intent.GuildMembers"/> to be accurate.
     /// </summary>
     [JsonProperty("member_count")]
     public int MemberCount { get; internal set; }
@@ -313,13 +313,32 @@ public class Guild : IEquatable<Guild>
     /// All visible channels in the guild.
     /// </summary>
     public IReadOnlyCollection<GuildChannel> Channels => _channels;
-    internal readonly List<GuildChannel> _channels;
+    internal readonly List<GuildChannel> _channels = [];
     
     /// <summary>
     /// All visible threads in the guild.
     /// </summary>
     public IReadOnlyCollection<ThreadChannel> Threads => _threads;
-    internal readonly List<ThreadChannel> _threads;
+    internal readonly List<ThreadChannel> _threads = [];
+    
+    /// <summary>
+    /// Stage instances in the guild.
+    /// </summary>
+    public IReadOnlyCollection<StageInstance> StageInstances => _stageInstances;
+    [JsonProperty("stage_instances")] internal readonly List<StageInstance> _stageInstances = [];
+
+    /// <summary>
+    /// Scheduled events in the guild.
+    /// </summary>
+    public IReadOnlyCollection<ScheduledEvent> ScheduledEvents => _scheduledEvents;
+    [JsonProperty("guild_scheduled_events")] internal readonly List<ScheduledEvent> _scheduledEvents = [];
+    
+    /// <summary>
+    /// Soundboard sounds in the guild. Will be empty unless cached through other methods or if it was recently created
+    /// or updated.
+    /// </summary>
+    public IReadOnlyCollection<SoundboardSound> SoundboardSounds => _soundboardSounds;
+    [JsonProperty("soundboard_sounds")] internal readonly HashSet<SoundboardSound> _soundboardSounds = [];
     
     #endregion
     
@@ -340,13 +359,6 @@ public class Guild : IEquatable<Guild>
     /// it was completed.
     /// </summary>
     public DateTime? LastChunked { get; private set; }
-
-    /// <summary>
-    /// Soundboard sounds in the guild. Will be empty unless cached through other methods or if it was recently created
-    /// or updated.
-    /// </summary>
-    public IReadOnlyCollection<SoundboardSound> SoundboardSounds => _soundboardSounds;
-    internal readonly HashSet<SoundboardSound> _soundboardSounds = [];
 
     /// <summary>
     /// All cached messages that were sent in this guild.
@@ -534,6 +546,15 @@ public class Guild : IEquatable<Guild>
         await Bot._rest.ListScheduledEventsForGuildAsync(Id);
 
     /// <summary>
+    /// Retrieve a scheduled event from the cache.
+    /// </summary>
+    /// <param name="id">ID of the scheduled event.</param>
+    /// <returns>The scheduled event matching the given ID, or <c>null</c> if not found.</returns>
+    /// <remarks>This method is generally preferred compared to <see cref="RequestScheduledEventAsync"/>.</remarks>
+    public ScheduledEvent? GetScheduledEvent(ulong id) =>
+        _scheduledEvents.FirstOrDefault(se => se.Id == id);
+    
+    /// <summary>
     /// Requests a scheduled event.
     /// </summary>
     /// <param name="id">ID of the scheduled event.</param>
@@ -651,6 +672,22 @@ public class Guild : IEquatable<Guild>
     /// <returns>The requested member.</returns>
     public async Task<Member> RequestMemberAsync(ulong id) =>
         await Bot._rest.GetGuildMemberAsync(Id, id);
+    
+    /// <summary>
+    /// Retrieve a stage instance from the cache.
+    /// </summary>
+    /// <param name="id">ID of the stage instance.</param>
+    /// <returns>The stage instance matching the provided ID, or <c>null</c> if not found.</returns>
+    public StageInstance? GetStageInstance(ulong id) =>
+        _stageInstances.FirstOrDefault(si => si.Id == id);
+
+    /// <summary>
+    /// Request a stage instance. Unlike <see cref="GetStageInstance"/>, this is an API call.
+    /// </summary>
+    /// <param name="id">ID of the stage channel.</param>
+    /// <returns>The requested stage instance.</returns>
+    public async Task<StageInstance> RequestStageInstance(ulong id) =>
+        await Bot._rest.GetStageInstanceAsync(id);
 
     /// <summary>
     /// Request members in the guild.
@@ -660,7 +697,7 @@ public class Guild : IEquatable<Guild>
     /// <param name="after">Request members whose accounts were created after the given date.</param>
     /// <param name="cache">Whether to cache each member.</param>
     /// <returns>The requested amount of members.</returns>
-    /// <remarks>Requires <see cref="Intents.GuildMembers"/>. Privileged Gateway Intents (server members) are also
+    /// <remarks>Requires <see cref="Intent.GuildMembers"/>. Privileged Gateway Intents (server members) are also
     /// required and need to be enabled in your <a href="https://discord.com/developers/applications">Discord developer portal.</a>
     /// If you don't need access to each member but want all members, consider using <see cref="ChunkAsync"/> instead.
     /// </remarks>
@@ -724,18 +761,18 @@ public class Guild : IEquatable<Guild>
         await Bot._rest.GetGuildWebhooksAsync(Id);
 
     /// <summary>
-    /// Requests all members in the guild. Requires <see cref="Intents.GuildMembers"/>. All members are cached regardless
+    /// Requests all members in the guild. Requires <see cref="Intent.GuildMembers"/>. All members are cached regardless
     /// of cache manager settings.
     /// </summary>
-    /// <exception cref="DiscordException">Missing <see cref="Intents.GuildMembers"/>.</exception>
+    /// <exception cref="DiscordException">Missing <see cref="Intent.GuildMembers"/>.</exception>
     /// <remarks>This task is completed via the Websocket. If you'd like to access each member individually (batched) and
     /// control whether members are cached, consider using <see cref="RequestMembersAsync"/> instead; although that process
     /// is slower.
     /// </remarks>
     public async Task ChunkAsync()
     {
-        if (!Bot.Intents.HasFlag(Intents.GuildMembers))
-            throw new DiscordException($"Missing {Intents.GuildMembers} intent");
+        if (!Bot.Intents.HasFlag(Intent.GuildMembers))
+            throw new DiscordException($"Missing {Intent.GuildMembers} intent");
         var payload = new
         {
             op = Opcode.RequestGuildMembers,
@@ -1092,11 +1129,11 @@ public class Guild : IEquatable<Guild>
 
     internal void CacheMembersFromCreate(GatewayPayload payload, ulong botId)
     {
-        var members = DiscordGatewayClient.GetElementValue(payload.D!.Value, "members");
+        var members = Gateway.GetElementValue(payload.D!.Value, "members");
         
         if (Bot.CacheManager.Members)
         {
-            var converted = DiscordGatewayClient.Deserialize<List<Member>>(members);
+            var converted = Gateway.Deserialize<List<Member>>(members);
             Bot._rest.SetMemberValues(converted, Id);
             _members.UnionWith(converted);
         }
@@ -1113,7 +1150,7 @@ public class Guild : IEquatable<Guild>
                 var userId = element.GetProperty("user").GetProperty("id");
                 if (Convert.ToUInt64(userId.ToString()) != Bot.User?.Id)
                     continue;
-                var self = DiscordGatewayClient.Deserialize<Member>(element);
+                var self = Gateway.Deserialize<Member>(element);
                 Bot._rest.SetMemberValues([self], Id);
                 _members.Add(self);
                 break;

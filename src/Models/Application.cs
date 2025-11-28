@@ -114,7 +114,7 @@ public class Application : IEquatable<Application>
     /// <summary>
     /// App's public flags.
     /// </summary>
-    public IReadOnlyCollection<ApplicationFlags> Flags { get; }
+    public IReadOnlyCollection<ApplicationFlag> Flags { get; }
 
     /// <summary>
     /// Approximate count of guilds the app has been added to.
@@ -180,7 +180,7 @@ public class Application : IEquatable<Application>
         if (cover_image != null)
             CoverImage = new Media(cover_image, $"/app-icons/{id}/{cover_image}");
         if (flags is { } value)
-            Flags = Util.FromBitfield<ApplicationFlags>(value);
+            Flags = Util.FromBitfield<ApplicationFlag>(value);
         else
             Flags = [];
         InstallParams = install_params != null ? new InstallParams(install_params) : null;
@@ -232,17 +232,20 @@ public class Application : IEquatable<Application>
 }
 
 /// <summary>
-/// Represents the values that can be edited for an application via <see cref="Application.EditAsync(ApplicationEdit)"/> 
+/// Represents the values that can be edited for an application via <see cref="Application.EditAsync"/> 
 /// </summary>
-public struct ApplicationEdit
+public readonly struct ApplicationEdit
 {
-    internal JSON _payload = [];
+    internal readonly JSON _payload = [];
     
     /// <summary>
     /// Initializes a new application edit instance.
     /// </summary>
     public ApplicationEdit() { }
     
+    /// <summary>
+    /// Set the custom install URL.
+    /// </summary>
     /// <param name="url">Default custom authorization URL for the app, if enabled.</param>
     /// <returns>The edit instance.</returns>
     public ApplicationEdit SetCustomInstallUrl(string url)
@@ -251,6 +254,9 @@ public struct ApplicationEdit
         return this;
     }
     
+    /// <summary>
+    /// Set the description.
+    /// </summary>
     /// <param name="description">Description of the app.</param>
     /// <returns>The edit instance.</returns>
     public ApplicationEdit SetDescription(string description)
@@ -259,6 +265,9 @@ public struct ApplicationEdit
         return this;
     }
     
+    /// <summary>
+    /// Set the role connection verifications URL.
+    /// </summary>
     /// <param name="url">Role connection verification URL for the app.</param>
     /// <returns>The edit instance.</returns>
     public ApplicationEdit SetRoleConnectionsVerificationsUrl(string url)
@@ -267,6 +276,9 @@ public struct ApplicationEdit
         return this;
     }
     
+    /// <summary>
+    /// Set the installation params.
+    /// </summary>
     /// <param name="installParams">Settings for the app's default in-app authorization link, if enabled.</param>
     /// <returns>The edit instance.</returns>
     public ApplicationEdit SetInstallParams(InstallParams installParams)
@@ -280,9 +292,23 @@ public struct ApplicationEdit
         _payload["install_params"] = payload;
         return this;
     }
+
+    /// <summary>
+    /// Set the application flags.
+    /// </summary>
+    /// <param name="flags">Application flags. Limited to only <see cref="ApplicationFlag.GatewayPresenceLimited"/>,
+    /// <see cref="ApplicationFlag.GatewayGuildMembersLimited"/>, and <see cref="ApplicationFlag.GatewayMessageContentLimited"/>.
+    /// </param>
+    /// <returns>The edit instance.</returns>
+    public ApplicationEdit SetFlag(HashSet<ApplicationFlag> flags)
+    {
+        _payload["flags"] = Util.FromFlags(flags);
+        return this;
+    }
     
-    //public ApplicationEdit SetFlag(HashSet<ApplicationFlags> team)
-    
+    /// <summary>
+    /// Set the icon.
+    /// </summary>
     /// <param name="icon">The icon file or <c>null</c> to remove it.</param>
     /// <returns>The edit instance.</returns>
     public ApplicationEdit SetIcon(DFile? icon)
@@ -291,6 +317,9 @@ public struct ApplicationEdit
         return this;
     }
     
+    /// <summary>
+    /// Set the cover image.
+    /// </summary>
     /// <param name="coverImage">The cover image file or <c>null</c> to remove it.</param>
     /// <returns>The edit instance.</returns>
     public ApplicationEdit SetCoverImage(DFile? coverImage)
@@ -299,6 +328,9 @@ public struct ApplicationEdit
         return this;
     }
     
+    /// <summary>
+    /// Set the interactions endpoint URL.
+    /// </summary>
     /// <param name="url">Interactions endpoint URL for the app.</param>
     /// <returns>The edit instance.</returns>
     public ApplicationEdit SetInteractionsEndpointUrl(string url)
@@ -377,7 +409,7 @@ public class InstallParams
 /// Represents the flags for an <see cref="Application"/>.
 /// </summary>
 [Flags]
-public enum ApplicationFlags
+public enum ApplicationFlag
 {
     // DOCS: https://discord.com/developers/docs/resources/application#application-object-application-flags
     
@@ -387,23 +419,23 @@ public enum ApplicationFlags
     ApplicationAutoModerationRuleCreateBadge = 1 << 6,
     
     /// <summary>
-    /// Intent required for bots in <b>100 or more servers</b> to receive <see cref="DiscordGatewayClient.OnPresenceUpdate"/> events.
+    /// Intent required for bots in <b>100 or more servers</b> to receive <see cref="Gateway.OnPresenceUpdate"/> events.
     /// </summary>
     GatewayPresence                          = 1 << 12,
     
     /// <summary>
-    /// Intent required for bots in under 100 servers to receive <see cref="DiscordGatewayClient.OnPresenceUpdate"/> events, found on
+    /// Intent required for bots in under 100 servers to receive <see cref="Gateway.OnPresenceUpdate"/> events, found on
     /// the Bot page in your app's settings.
     /// </summary>
     GatewayPresenceLimited                   = 1 << 13,
     
     /// <summary>
-    /// Intent required for bots in <b>100 or more servers</b> to receive member-related events like <see cref="DiscordGatewayClient.OnGuildMemberAdd"/>.
+    /// Intent required for bots in <b>100 or more servers</b> to receive member-related events like <see cref="Gateway.OnGuildMemberAdd"/>.
     /// </summary>
     GatewayGuildMembers                      = 1 << 14,
     
     /// <summary>
-    /// Intent required for bots in under 100 servers to receive member-related events like <see cref="DiscordGatewayClient.OnGuildMemberAdd"/>
+    /// Intent required for bots in under 100 servers to receive member-related events like <see cref="Gateway.OnGuildMemberAdd"/>
     /// found on the Bot page in your app's settings.
     /// </summary>
     GatewayGuildMembersLimited               = 1 << 15,

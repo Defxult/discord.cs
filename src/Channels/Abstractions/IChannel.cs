@@ -62,9 +62,10 @@ public abstract class GuildChannel : IChannel
     public string Name { get; internal set; } = string.Empty;
 
     /// <summary>
-    /// Guild the channel belongs to.
+    /// ID of the guild the channel belongs to.
     /// </summary>
-    public Guild Guild { get; internal set; } = null!;
+    [JsonProperty("guild_id")]
+    public ulong GuildId { get; internal set; }
 
     /// <summary>
     /// ID of the parent channel.
@@ -99,7 +100,7 @@ public abstract class GuildChannel : IChannel
     
     /// <summary>
     /// When the last message pinned message was pinned. Can be <c>null</c> if initially accessing from event
-    /// <see cref="DiscordGatewayClient.OnGuildCreate"/>.
+    /// <see cref="Gateway.OnGuildCreate"/>.
     /// </summary>
     [JsonProperty("last_pin_timestamp")]
     public DateTime? LastPinned { get; internal set; }
@@ -112,6 +113,11 @@ public abstract class GuildChannel : IChannel
     public int? SlowModeSeconds { get; internal set; }
 
     #region CUSTOM
+    
+    /// <summary>
+    /// Guild the channel belongs to.
+    /// </summary>
+    public Guild Guild { get; internal set; } = null!;
 
     /// <summary>
     /// Mention the channel.
@@ -154,31 +160,31 @@ public abstract class GuildChannel : IChannel
             switch ((ChannelType)value)
             {
                 case ChannelType.GuildText:
-                    var text = DiscordGatewayClient.Deserialize<TextChannel>(channelElement);
+                    var text = Gateway.Deserialize<TextChannel>(channelElement);
                     channels.Add(text);
                     break;
                 case ChannelType.GuildVoice:
-                    var voice = DiscordGatewayClient.Deserialize<VoiceChannel>(channelElement);
+                    var voice = Gateway.Deserialize<VoiceChannel>(channelElement);
                     channels.Add(voice);
                     break;
                 case ChannelType.GuildCategory:
-                    var cat = DiscordGatewayClient.Deserialize<CategoryChannel>(channelElement);
+                    var cat = Gateway.Deserialize<CategoryChannel>(channelElement);
                     channels.Add(cat);
                     break;
                 case ChannelType.GuildAnnouncement:
-                    var announcement = DiscordGatewayClient.Deserialize<AnnouncementChannel>(channelElement);
+                    var announcement = Gateway.Deserialize<AnnouncementChannel>(channelElement);
                     channels.Add(announcement);
                     break;
                 case ChannelType.GuildStageVoice:
-                    var stage = DiscordGatewayClient.Deserialize<StageChannel>(channelElement);
+                    var stage = Gateway.Deserialize<StageChannel>(channelElement);
                     channels.Add(stage);
                     break;
                 case ChannelType.GuildForum:
-                    var forum = DiscordGatewayClient.Deserialize<ForumChannel>(channelElement);
+                    var forum = Gateway.Deserialize<ForumChannel>(channelElement);
                     channels.Add(forum);
                     break;
                 case ChannelType.GuildMedia:
-                    var media = DiscordGatewayClient.Deserialize<MediaChannel>(channelElement);
+                    var media = Gateway.Deserialize<MediaChannel>(channelElement);
                     channels.Add(media);
                     break;
                 default:
@@ -194,7 +200,7 @@ public abstract class GuildChannel : IChannel
         var docT = JsonDocument.Parse(JsonConvert.SerializeObject(threadObjs));
         foreach (var threadElement in docT.RootElement.EnumerateArray())
         {
-            var thread = DiscordGatewayClient.Deserialize<ThreadChannel>(threadElement);
+            var thread = Gateway.Deserialize<ThreadChannel>(threadElement);
             threads.Add(thread);
         }
         return threads;
@@ -337,7 +343,7 @@ public interface IInvitable
     /// <param name="targetUserId">ID of the user whose stream to display for this invite, required if <paramref name="targetType"/>,
     /// is <see cref="InviteTargetType.Stream"/>, the user must be streaming in the channel.</param>
     /// <param name="targetApplicationId">ID of the embedded application to open for this invite, required if <paramref name="targetType"/>,
-    /// is <see cref="InviteTargetType.EmbeddedApplication"/>, the application must have the <see cref="ApplicationFlags.Embedded"/>.</param>
+    /// is <see cref="InviteTargetType.EmbeddedApplication"/>, the application must have the <see cref="ApplicationFlag.Embedded"/>.</param>
     /// <param name="reason">Reason for creating the invite. This is displayed in the audit-log.</param>
     /// <returns>The invite the was created.</returns>
     /// <remarks>Requires <see cref="Permission.CreateInstantInvite"/>.</remarks>
