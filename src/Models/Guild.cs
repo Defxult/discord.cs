@@ -412,11 +412,15 @@ public class Guild : IEquatable<Guild>
     #endregion
 
     [JsonConstructor]
-    private Guild(ulong id, List<JSON> channels, List<JSON> threads)
+    private Guild(ulong id, List<JSON>? channels, List<JSON>? threads)
     {
         Id = id;
-        _channels = GuildChannel.ParseChannels(channels);
-        _threads = GuildChannel.ParseThreads(threads);
+        
+        // Note: Although this was originally made for GUILD_CREATE, GUILD_UPDATE also calls this with "channels" and
+        // "threads" missing due to those values being assigned via GUILD_CREATE extra fields. To avoid an error due to
+        // a GUILD_UPDATE, make them nullable and only assign their values if they are not null.
+        if (channels != null) _channels = GuildChannel.ParseChannels(channels);
+        if (threads != null) _threads = GuildChannel.ParseThreads(threads);
     }
 
     public override bool Equals(object? other) => other is Guild guild && Equals(guild);
