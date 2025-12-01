@@ -5,31 +5,98 @@ namespace Discord.Models;
 /// </summary>
 public struct Color : IEquatable<Color>
 {
+    /// <summary>
+    /// Returns a color with its value set to <c>0x5865f2</c>.
+    /// </summary>
     public static readonly Color Blurple = new(0x5865F2);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0xEB459E</c>.
+    /// </summary>
     public static readonly Color Fuchsia = new(0xEB459E);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0xFC0303</c>.
+    /// </summary>
     public static readonly Color Red = new(0xFC0303);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0x910101</c>.
+    /// </summary>
     public static readonly Color DarkRed = new(0x910101);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0xFF992B</c>.
+    /// </summary>
     public static readonly Color Orange = new(0xFF992B);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0xFFDC2B</c>.
+    /// </summary>
     public static readonly Color Yellow = new(0xFFDC2B);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0x2BFF32</c>.
+    /// </summary>
     public static readonly Color Green = new(0x2BFF32);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0x026105</c>.
+    /// </summary>
     public static readonly Color DarkGreen = new(0x026105);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0x36B1D6</c>.
+    /// </summary>
     public static readonly Color SkyBlue = new(0x36B1D6);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0x1021E3</c>.
+    /// </summary>
     public static readonly Color DarkBlue = new(0x1021E3);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0x8F44F2</c>.
+    /// </summary>
     public static readonly Color Purple = new(0x8F44F2);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0xFCA7F0</c>.
+    /// </summary>
     public static readonly Color Pink = new(0xFCA7F0);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0x000001</c>.
+    /// </summary>
     public static readonly Color Black = new(0x000001);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0xFFFFFF</c>.
+    /// </summary>
     public static readonly Color White = new(0xFFFFFF);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0xA6A6A6</c>.
+    /// </summary>
     public static readonly Color Gray = new(0xA6A6A6);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0x2F3136</c>.
+    /// </summary>
     public static readonly Color DarkTheme = new(0x2F3136);
+    
+    /// <summary>
+    /// Returns a color with its value set to <c>0x008080</c>.
+    /// </summary>
     public static readonly Color Teal = new(0x008080);
 
     /// <summary>
-    /// The maximum a color value can be (lowest is 0).
+    /// Maximum a color value can be (lowest is 0).
     /// </summary>
     public const int Max = 0xFFFFFF;
 
     /// <summary>
-    /// Raw value for the color.
+    /// Raw color value.
     /// </summary>
     public int Value
     {
@@ -59,7 +126,7 @@ public struct Color : IEquatable<Color>
     }
 
     /// <summary>
-    /// Initializes a new color instance based on RGB values.
+    /// Initializes a new color using a hexadecimal value.
     /// </summary>
     /// <param name="hex">A hex value.</param>
     public Color(string hex)

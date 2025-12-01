@@ -53,7 +53,7 @@ public class Bot
     /// A simple way to store items that are related to the bot's usage. This library never processes the information in said storage,
     /// and is entirely handled by you.
     /// </summary>
-    public Dictionary<string, object> Storage = [];
+    public Dictionary<string, object> Storage { get; set; } = [];
     
     /// <summary>
     /// The bots gateway intents. Handles which events are dispatched by Discord.
@@ -103,6 +103,52 @@ public class Bot
     }
     
     #region PUBLIC
+    
+    /// <summary>
+    /// Retrieve a user from the cache.
+    /// </summary>
+    /// <param name="id">User ID.</param>
+    /// <returns>The user matching the provided ID, or <c>null</c> if not found.</returns>
+    public User? GetUser(ulong id) =>
+        Users.FirstOrDefault(u => u.Id == id);
+
+    /// <summary>
+    /// Retrieve a member from the cache. This is a shortcut for <see cref="Guild.GetMember"/>.
+    /// </summary>
+    /// <param name="id">Member ID.</param>
+    /// <returns>The member matching the provided ID, or <c>null</c> if not found.</returns>
+    public Member? GetMember(ulong id)
+    {
+        foreach (var guild in _guilds)
+            if (guild.GetMember(id) is { } member)
+                return member;
+        return null;
+    }
+    
+    /// <summary>
+    /// Retrieve an emoji from the cache. This is a shortcut for <see cref="Guild.GetEmoji"/>.
+    /// </summary>
+    /// <param name="id">Emoji ID.</param>
+    /// <returns>The emoji matching the provided ID, or <c>null</c> if not found.</returns>
+    public Emoji? GetEmoji(ulong id)
+    {
+        foreach (var guild in _guilds)
+            if (guild.GetEmoji(id) is { } emoji)
+                return emoji;
+        return null;
+    }
+    /// <summary>
+    /// Retrieve a guild sticker from the cache. This is a shortcut for <see cref="Guild.GetSticker"/>.
+    /// </summary>
+    /// <param name="id">Guild sticker ID.</param>
+    /// <returns>The guild sticker matching the provided ID, or <c>null</c> if not found.</returns>
+    public GuildSticker? GetSticker(ulong id)
+    {
+        foreach (var guild in _guilds)
+            if (guild.GetSticker(id) is { } sticker)
+                return sticker;
+        return null;
+    }
     
     /// <summary>
     /// Request a webhook.

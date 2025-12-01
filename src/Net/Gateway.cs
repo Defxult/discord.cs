@@ -654,42 +654,7 @@ public sealed class Gateway
                     case "RESUMED":
                         Dev.Log("[GW] Successfully resumed");
                         break;
-                    case "MESSAGE_CREATE":
-                        var createdMessage = Deserialize<Message>(d);
-                        _rest.SetMessageValues([createdMessage]);
-                        
-                        // Update the last_message_id for that channel.
-                        if (createdMessage.GuildId is not null)
-                        {
-                            var cmChannel = createdMessage.Guild!.GetChannel(createdMessage.ChannelId);
-                            cmChannel?.LastMessageId = createdMessage.Id;
-                            // If it's a thread, update the values associated with it.
-                            if (createdMessage.Guild!.GetThread(createdMessage.ChannelId) is { } thread)
-                            {
-                                thread.MessageCount += 1;
-                                thread.TotalMessagesSent += 1;
-                            }
-                            // Else: it's a non-messageable channel, AKA a ForumChannel etc
-                        }
-                        else
-                        {
-                            // Since GuildId is null, it's a direct message so create the DmChannel or if found, update
-                            // its values.
-                            if (_bot.GetDmChannel(createdMessage.ChannelId) is not { } dmChannel)
-                            {
-                                var createdDm = await _bot._rest.CreateDmAsync(createdMessage.Author.Id);
-                                createdDm.LastMessageId = createdMessage.Id;
-                                _bot._dmChannels.Add(createdDm);
-                            }
-                            else
-                            {
-                                dmChannel.LastMessageId = createdMessage.Id;
-                            }
-                        }
-                        _bot.CacheMessage(createdMessage);
-                        OnMessageCreate?.Invoke(this, createdMessage);
-                        break;
-
+                    
                     #region GUILDS
                     
                     case "GUILD_CREATE":
@@ -810,6 +775,12 @@ public sealed class Gateway
                     case "THREAD_CREATE":
                         var tcGuildId = Deserialize<ulong>(GetElementValue(d, "guild_id"));
                         var createdThread = Deserialize<ThreadChannel>(d);
+                        
+                        // If the thread was created via Message.CreateThreadAsync(), the ID of the thread is the ID of
+                        // the message. So assigned this thread directly to that message (if it's cached).
+                        if (_bot.GetMessage(createdThread.Id) is { } tcm)
+                            tcm.Thread = createdThread;
+                        
                         if (_bot.GetGuild(tcGuildId) is { } tcGuild)
                             _bot._rest.SetThreadValues([createdThread], tcGuild);
                         
@@ -919,6 +890,50 @@ public sealed class Gateway
                             sidGuild._stageInstances.RemoveAll(s => s.Id == sidStageInstanceId);
                         OnStageInstanceDelete?.Invoke(this, (sidGuildId, sidStageInstanceId, sidStageChannelId));
                         break;
+                    #endregion
+
+                    #region GUILD MESSAGES
+
+                    case "MESSAGE_CREATE":
+                        var createdMessage = Deserialize<Message>(d);
+                        _rest.SetMessageValues([createdMessage]);
+                        
+                        // Update the last_message_id for that channel.
+                        if (createdMessage.GuildId is not null)
+                        {
+                            var cmChannel = createdMessage.Guild!.GetChannel(createdMessage.ChannelId);
+                            if  (cmChannel is not null)
+                                cmChannel.LastMessageId = createdMessage.Id;
+                            
+                            // If it's a thread, update the values associated with it.
+                            if (createdMessage.Guild!.GetThread(createdMessage.ChannelId) is { } thread)
+                            {
+                                thread.MessageCount += 1;
+                                thread.TotalMessagesSent += 1;
+                            }
+                            // Else: it's a non-messageable channel, AKA a ForumChannel etc
+                        }
+                        else
+                        {
+                            // Since GuildId is null, it's a direct message so create the DmChannel or if found, update
+                            // its values.
+                            if (_bot.GetDmChannel(createdMessage.ChannelId) is not { } dmChannel)
+                            {
+                                var createdDm = await _bot._rest.CreateDmAsync(createdMessage.Author.Id);
+                                createdDm.LastMessageId = createdMessage.Id;
+                                _bot._dmChannels.Add(createdDm);
+                            }
+                            else
+                            {
+                                dmChannel.LastMessageId = createdMessage.Id;
+                            }
+                        }
+                        _bot.CacheMessage(createdMessage);
+                        OnMessageCreate?.Invoke(this, createdMessage);
+                        break;
+                    case "MESSAGE_UPDATE":
+                        break;
+
                     #endregion
                     
                     case "GUILD_MEMBERS_CHUNK":

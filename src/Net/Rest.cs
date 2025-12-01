@@ -961,7 +961,16 @@ internal class Rest
     internal void SetMessageValues(IEnumerable<Message> message)
     {
         foreach (var m in message)
+        {
             m.Bot = _bot;
+            if (m.ReferencedMessage is { } rm)
+                rm.Bot = _bot;
+            if (m.Poll is { } poll)
+            {
+                poll.Bot = _bot;
+                poll.Message = m;
+            }
+        }
     }
     
     // Retrieves the messages in a channel. Returns an array of message objects from newest to oldest on success.
@@ -1004,6 +1013,53 @@ internal class Rest
     internal async Task<Message> CreateMessageAsync(ulong channelId, MultipartFormDataContent form)
     {
         string data = await RequestAsync(Post, Route($"/channels/{channelId}/messages"), form);
+        var message = JsonConvert.DeserializeObject<Message>(data)!;
+        SetMessageValues([message]);
+        return message;
+    }
+    
+    // Crosspost a message in an Announcement Channel to following channels. This endpoint requires the SEND_MESSAGES
+    // permission, if the current user sent the message, or additionally the MANAGE_MESSAGES permission, for all other
+    // messages, to be present for the current user.
+    // 
+    // Returns a message object. Fires a Message Update Gateway event.
+    // https://discord.com/developers/docs/resources/message#crosspost-message
+    internal async Task<Message> CrosspostMessageAsync(ulong channelId, ulong messageId)
+    {
+        string data = await RequestAsync(Post, Route($"/channels/{channelId}/messages/{messageId}/crosspost"));
+        var message = JsonConvert.DeserializeObject<Message>(data)!;
+        SetMessageValues([message]);
+        return message;
+    }
+    
+    // Delete a message. If operating on a guild channel and trying to delete a message that was not sent by the current
+    // user, this endpoint requires the MANAGE_MESSAGES permission. Returns a 204 empty response on success. Fires a
+    // Message Delete Gateway event.
+    // https://discord.com/developers/docs/resources/message#delete-message
+    internal async Task DeleteMessageAsync(ulong channelId, ulong messageId, string? reason)
+    {
+        await RequestAsync(Delete, Route($"/channels/{channelId}/messages/{messageId}"), auditReason: reason);
+    }
+
+    #endregion
+
+    #region POLL
+
+    // Get a list of users that voted for this specific answer.
+    // https://discord.com/developers/docs/resources/poll#get-answer-voters
+    internal async Task<List<User>> GetAnswerVotersAsync(ulong channelId, ulong messageId, int answerId, ulong after, int limit)
+    {
+        string query = Route($"/channels/{channelId}/polls/{messageId}/answers/{answerId}?after={after}&limit={limit}");
+        var doc = JsonDocument.Parse(await RequestAsync(Get, query));
+        var usersElement = doc.RootElement.GetProperty("users");
+        return Gateway.Deserialize<List<User>>(usersElement);
+    }
+    
+    // Immediately ends the poll. You cannot end polls from other users.
+    // https://discord.com/developers/docs/resources/poll#end-poll
+    internal async Task<Message> EndPollAsync(ulong channelId, ulong messageId)
+    {
+        string data = await RequestAsync(Post, Route($"/channels/{channelId}/polls/{messageId}/expire"));
         var message = JsonConvert.DeserializeObject<Message>(data)!;
         SetMessageValues([message]);
         return message;

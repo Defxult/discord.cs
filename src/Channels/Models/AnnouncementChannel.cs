@@ -26,10 +26,12 @@ public class AnnouncementChannel : GuildChannel, IMessageable, IThreadable, IInv
         await Bot._rest.GetChannelMessage(Id, id);
 
     /// <inheritdoc/>
-    public async Task<Message> SendAsync(string? content = null, bool tts = false, IEnumerable<Embed>? embeds = null,
+    public async Task<Message> SendAsync(string? content = null, bool silent = false, bool tts = false,
+        IEnumerable<Embed>? embeds = null,
         AllowedMentions? allowedMentions = null, IEnumerable<GuildSticker>? stickers = null, Poll? poll = null,
-        ICollection<DFile>? files = null) =>
-        await ChannelServicer.SendAsync(this, content, tts, embeds, allowedMentions, stickers, poll, files);
+        ICollection<DFile>? files = null, MessageReference? reference = null) =>
+        await ChannelServicer.SendAsync(this, content, silent, tts, embeds, allowedMentions, stickers, poll, files,
+            reference);
 
     /// <inheritdoc/>
     public async Task TriggerTypingAsync(Func<Task>? func = null, CancellationToken ct = default) =>

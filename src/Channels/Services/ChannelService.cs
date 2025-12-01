@@ -51,23 +51,19 @@ internal static class ChannelServicer
     internal static async Task DeletePermissions<T>(T channel, ulong overwriteId, string? reason) where T : GuildChannel, IPermissionEditable =>
         await channel.Bot._rest.DeleteChannelPermissions(channel.Id, overwriteId, reason);
     
-    internal static async Task<GuildChannel> EditAsync(GuildChannel channel, GuildChannelEdit edit,
-        string? reason = null) =>
-        await channel.Bot._rest.ModifyChannelAsync(edit, channel, reason);
-    
     internal static async Task DeleteAsync(IChannel channel, string? reason = null) =>
         await channel.Bot._rest.DeleteCloseChannelAsync(channel.Id, reason);
 
-    internal static async Task<Message> SendAsync(IMessageable messageable, string? content, bool tts,
+    internal static async Task<Message> SendAsync(IMessageable messageable, string? content, bool silent, bool tts,
         IEnumerable<Embed>? embeds, AllowedMentions? allowedMentions, IEnumerable<GuildSticker>? stickers, Poll? poll,
-        ICollection<DFile>? files)
+        ICollection<DFile>? files, MessageReference? reference)
     {
         var form = new MultipartFormDataContent(Dev.Boundary);
         var bot = messageable.Bot;
 
         var payload = new JSON();
         if (content != null)
-            payload["content"] = content;
+            payload["content"] = silent ? $"@silent {content}" : content;
         payload["tts"] = tts;
         if (embeds != null)
             payload["embeds"] = embeds;
@@ -77,11 +73,17 @@ internal static class ChannelServicer
             payload["sticker_ids"] = stickers.Select(s => s.Id);
         if (poll is { } p)
             payload["poll"] = p;
-
+        if (reference != null)
+            payload["message_reference"] = reference;
+        
+        
+        // Files **** (leave as last due to adding to form) ****
         var jsonContent = new StringContent(JsonConvert.SerializeObject(payload));
         jsonContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        
+        // Add as payload_json
         form.Add(jsonContent, "payload_json");
-
+        
         if (files != null)
         {
             var list = files.ToList();
@@ -93,7 +95,6 @@ internal static class ChannelServicer
                 form.Add(bac, $"files[{i}]", file.Name);
             }
         }
-
         if (messageable.Type == ChannelType.Dm)
         {
             var dmChannel = await bot._rest.CreateDmAsync(((DmChannel)messageable).Recipient.Id);

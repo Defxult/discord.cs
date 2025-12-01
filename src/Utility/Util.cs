@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Discord.Models;
 using Discord.Net;
 using Newtonsoft.Json;
@@ -167,10 +168,10 @@ public static class Markdown
     /// <summary>
     /// Converts the code into a formatted code block for the desired language.
     /// </summary>
-    /// <param name="language">Language the text should be converted into, or <c>null</c> for plain text.</param>
     /// <param name="code">The code itself.</param>
+    /// <param name="language">Language the text should be converted into, or <c>null</c> for plain text.</param>
     /// <returns>A formatted code block.</returns>
-    public static string CodeBlock(string? language, string code) =>
+    public static string CodeBlock(string code, string? language = null) =>
         $"```{language ?? string.Empty}\n{code}\n```";
     
     /// <summary>
@@ -327,6 +328,60 @@ public static class Markdown
     /// <param name="id">ID of the slash command.</param>
     /// <returns>Slash command in the mentioned format.</returns>
     public static string MentionSlashCommand(string name, ulong id) => $"</{name}:{id}>";
+    
+    /// <summary>
+    /// Escapes all markdowns and returns the raw text.
+    /// </summary>
+    /// <param name="text">The text to escape.</param>
+    /// <param name="ignoreUrls">Whether to prevent URLs from being escaped.</param>
+    /// <param name="style">Various styles of escaping the text:
+    /// <list type="number">
+    ///     <item>The normal escape style.</item>
+    ///     <item>Wrap the entire text in a code block.</item>
+    /// </list>
+    /// </param>
+    /// <returns>The escaped text.</returns>
+    public static string Escape(string text, bool ignoreUrls = true, int style = 1)
+    {
+        switch (style)
+        {
+            case 1 when ignoreUrls:
+            {
+                var ignoreRegex = new Regex(@"(?:https?:\/\/\S+|w{3}\.\S+)|@(everyone|here)|[:*~>`|_\-#]",
+                    RegexOptions.Compiled);
+                return ignoreRegex.Replace(text, match =>
+                {
+                    string v = match.Value;
+                    if (v.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                        return v;
+                    if (v.Contains('@'))
+                        return AddZeroSpace(v);
+                    return "\\" + v;
+                });
+            }
+            case 1:
+            {
+                var regex = new Regex(@"[:*~>`|_\-#]|@(everyone|here)", RegexOptions.Compiled);
+                return regex.Replace(text, match =>
+                {
+                    string v = match.Value;
+                    if (v.Contains('@'))
+                        return AddZeroSpace(v);
+                    return "\\" + v;
+                });
+            }
+            case 2:
+                return CodeBlock(text);
+        }
+        return text;
+        
+        string AddZeroSpace(string txt)
+        {
+            const string zeroWidthSpace = "\u200B";
+            return "@" + zeroWidthSpace + (txt.Contains("everyone") ? "everyone" : "here");
+        }
+    }
+
 
     /// <summary>
     /// Format a date to a Discord timestamp that will display the given timestamp in the user's timezone and locale.

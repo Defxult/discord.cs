@@ -7,6 +7,8 @@ namespace Discord.Models;
 /// </summary>
 public class Embed
 {
+    // DOCS: https://discord.com/developers/docs/resources/message#embed-object
+    
     /// <summary>
     /// Embed type.
     /// </summary>
@@ -109,7 +111,14 @@ public class Embed
     }
 
     /// <summary>
-    /// Initializes a new embed instance.
+    /// Initializes a new embed instance. Example:
+    /// <code>
+    /// var embed = new Embed
+    /// {
+    ///     Title = "discord.cs",
+    ///     Color = Color.Blurple
+    /// }
+    /// </code>
     /// </summary>
     public Embed() 
     {
@@ -179,23 +188,25 @@ public class Embed
 /// </summary>
 public record EmbedFooter
 {
+    // DOCS: https://discord.com/developers/docs/resources/message#embed-object-embed-footer-structure
+    
     /// <summary>
     /// Footer text.
     /// </summary>
     [JsonProperty("text")]
-    public string Text;
+    public string Text { get; set; }
 
     /// <summary>
     /// Icon URL.
     /// </summary>
     [JsonProperty("icon_url")]
-    public string? IconUrl;
+    public string? IconUrl { get; set; }
 
     /// <summary>
     /// A proxied URL of footer icon.
     /// </summary>
     [JsonProperty("proxy_icon_url")]
-    public readonly string? ProxyIconUrl;
+    public string? ProxyIconUrl { get; init; }
 
     /// <summary>
     /// Initializes a new embed footer instance.
@@ -218,19 +229,19 @@ public class EmbedMedia : Downloadable
     /// A proxied URL of the media.
     /// </summary>
     [JsonProperty("proxy_url")]
-    public readonly string? ProxyUrl;
+    public string? ProxyUrl { get; init; }
 
     /// <summary>
     /// Height of the media.
     /// </summary>
     [JsonProperty("height")]
-    public readonly int? Height;
+    public int? Height { get; init; }
 
     /// <summary>
     /// Width of the media.
     /// </summary>
     [JsonProperty("width")]
-    public readonly int? Width;
+    public int? Width { get; init; }
 
     internal EmbedMedia(string url, string? proxyUrl, int? height, int? width)
     {
@@ -246,6 +257,8 @@ public class EmbedMedia : Downloadable
 /// </summary>
 public class EmbedImage : EmbedMedia
 {
+    // DOCS: https://discord.com/developers/docs/resources/message#embed-object-embed-image-structure
+    
     /// <summary>
     /// Initializes a new embed image instance.
     /// </summary>
@@ -261,6 +274,8 @@ public class EmbedImage : EmbedMedia
 /// </summary>
 public class EmbedThumbnail : EmbedMedia
 {
+    // DOCS: https://discord.com/developers/docs/resources/message#embed-object-embed-thumbnail-structure
+    
     /// <summary>
     /// Initializes a new embed thumbnail instance.
     /// </summary>
@@ -276,6 +291,8 @@ public class EmbedThumbnail : EmbedMedia
 /// </summary>
 public class EmbedVideo : EmbedMedia
 {
+    // DOCS: https://discord.com/developers/docs/resources/message#embed-object-embed-video-structure
+    
     [JsonConstructor]
     internal EmbedVideo(string url, string? proxy_url, int? height, int? width) : base(url, proxy_url, height, width) { }
 }
@@ -285,17 +302,21 @@ public class EmbedVideo : EmbedMedia
 /// </summary>
 public record EmbedProvider
 {
+    // DOCS: https://discord.com/developers/docs/resources/message#embed-object-embed-provider-structure
+    
     /// <summary>
     /// Name of provider.
     /// </summary>
     [JsonProperty("name")]
-    public readonly string? Name;
+    public string? Name { get; init; }
 
     /// <summary>
     /// URL of provider.
     /// </summary>
     [JsonProperty("url")]
-    public readonly string? Url;
+    public string? Url { get; init; }
+    
+    private EmbedProvider() { }
 }
 
 /// <summary>
@@ -303,6 +324,8 @@ public record EmbedProvider
 /// </summary>
 public record EmbedAuthor
 {
+    // DOCS: https://discord.com/developers/docs/resources/message#embed-object-embed-author-structure
+    
     /// <summary>
     /// Name of the author. Up to 256 characters.
     /// </summary>
@@ -340,6 +363,8 @@ public record EmbedAuthor
 /// </summary>
 public record EmbedField
 {
+    // DOCS: https://discord.com/developers/docs/resources/message#embed-object-embed-field-structure
+    
     /// <summary>
     /// Name of the field. Up to 256 characters.
     /// </summary>
@@ -377,10 +402,40 @@ public record EmbedField
 /// </summary>
 public enum EmbedType
 {
+    // DOCS: https://discord.com/developers/docs/resources/message#embed-object-embed-types
+    
+    /// <summary>
+    /// Generic embed rendered from embed attributes.
+    /// </summary>
     Rich,
+    
+    /// <summary>
+    /// Image embed.
+    /// </summary>
     Image,
+    
+    /// <summary>
+    /// Video embed.
+    /// </summary>
     Video,
+    
+    /// <summary>
+    /// Animated gif image embed rendered as a video embed.
+    /// </summary>
     Gifv,
+    
+    /// <summary>
+    /// Article embed.
+    /// </summary>
     Article,
-    Link
+    
+    /// <summary>
+    /// Link embed.
+    /// </summary>
+    Link,
+    
+    /// <summary>
+    /// Poll result embed.
+    /// </summary>
+    PollResult
 }

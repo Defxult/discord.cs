@@ -45,6 +45,32 @@ public class Sticker : IEquatable<Sticker>
 }
 
 /// <summary>
+/// Represents the smallest amount of data required to render a sticker. A partial <see cref="Sticker"/> object.
+/// </summary>
+public record StickerItem
+{
+    /// <summary>
+    /// ID of the sticker.
+    /// </summary>
+    [JsonProperty("id")]
+    public ulong Id { get; init; }
+    
+    /// <summary>
+    /// Name of the sticker.
+    /// </summary>
+    [JsonProperty("name")]
+    public required string Name { get; init; }
+    
+    /// <summary>
+    /// Type of sticker format.
+    /// </summary>
+    [JsonProperty("format_type")]
+    public StickerFormat Format { get; init; }
+    
+    private StickerItem() { }
+}
+
+/// <summary>
 /// Represents a pack of standard stickers.
 /// </summary>
 public class StickerPack : IEquatable<StickerPack>

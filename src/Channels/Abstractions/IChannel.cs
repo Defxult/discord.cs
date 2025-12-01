@@ -250,22 +250,24 @@ public interface IMessageable : IChannel
     /// <returns>The requested message.</returns>
     /// <remarks>Unlike <see cref="Bot.GetMessage"/> this is an API call.</remarks>
     public Task<Message> RequestMessage(ulong id);
-    
+
     /// <summary>
     /// Send a message to the channel.
     /// </summary>
     /// <param name="content">Message contents (up to 2000 characters).</param>
+    /// <param name="silent">If <c>true</c>, mentions will not provide a desktop or push notification.</param>
     /// <param name="tts">Whether this is a TTS message.</param>
     /// <param name="embeds">Embeds (max 10), up to 6000 characters total.</param>
     /// <param name="allowedMentions">Allowed mentions for the message.</param>
     /// <param name="stickers">Up to 3 stickers to send in the message.</param>
     /// <param name="poll">A poll.</param>
     /// <param name="files">Files to upload with the message.</param>
+    /// <param name="reference">The referenced message.</param>
     /// <returns>The message that was sent.</returns>
     /// <remarks>Polls and files cannot be in the same message.</remarks>
-    public Task<Message> SendAsync(string? content = null, bool tts = false, IEnumerable<Embed>? embeds = null,
+    public Task<Message> SendAsync(string? content = null, bool silent = false, bool tts = false, IEnumerable<Embed>? embeds = null,
         AllowedMentions? allowedMentions = null, IEnumerable<GuildSticker>? stickers = null, Poll? poll = null,
-        ICollection<DFile>? files = null);
+        ICollection<DFile>? files = null, MessageReference? reference = null);
 
     /// <summary>
     /// Trigger the typing indicator.
