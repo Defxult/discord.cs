@@ -4,10 +4,10 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <LangVersion>default</LangVersion>
+        <LangVersion>12.0</LangVersion>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>Discord.cs</PackageId>
-        <Version>0.0.3-alpha</Version>
+        <Version>0.0.4-alpha</Version>
         <Title>Discord.cs</Title>
         <Authors>Defxult</Authors>
         <Description>A Discord API library.</Description>
@@ -17,7 +17,7 @@
         <IncludeSymbols>true</IncludeSymbols>
         <IncludeSource>true</IncludeSource>
         <PackageProjectUrl>https://github.com/Defxult/discord.cs</PackageProjectUrl>
-        <PackageTags>discord discord-api discord-bot websocket gateway interactions slash-commands rest-api csharp dotnet library</PackageTags>
+        <PackageTags>discord discord-api discord-bot websocket gateway interactions slash-commands discord-library csharp dotnet library</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>
