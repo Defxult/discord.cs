@@ -63,7 +63,11 @@ internal static class ChannelServicer
 
         var payload = new JSON();
         if (content != null)
-            payload["content"] = silent ? $"@silent {content}" : content;
+        {
+            payload["content"] = content;
+            if (silent)
+                payload["flags"] = Util.FromFlags([MessageFlag.SuppressNotifications]);
+        }
         payload["tts"] = tts;
         if (embeds != null)
             payload["embeds"] = embeds;
