@@ -94,12 +94,12 @@ public class Message : IEquatable<Message>
     /// </summary>
     [JsonProperty("embeds")]
     public IReadOnlyList<Embed> Embeds { get; private set; } = [];
-    
+
     /// <summary>
     /// Reactions to the message.
     /// </summary>
-    [JsonProperty("reactions")]
-    public IReadOnlyList<Reaction> Reactions { get; private set; } = [];
+    public IReadOnlyList<Reaction> Reactions => _reactions;
+    [JsonProperty("reactions")] internal List<Reaction> _reactions = [];
     
     /// <summary>
     /// Used for validating a message was sent. Either a <see langword="string"/> or <see langword="int"/> when received
@@ -294,18 +294,138 @@ public class Message : IEquatable<Message>
             return other.Id == Id;
         return false;
     }
-    
     public override bool Equals(object? obj)
     {
         if (obj is Message m)
             return Equals(m);
         return false;
     }
-    
     public override int GetHashCode() => Id.GetHashCode();
     public static bool operator ==(Message? left, Message? right) => Equals(left, right);
     public static bool operator !=(Message? left, Message? right) => !Equals(left, right);
 
+    /// <summary>
+    /// Add reactions to the message.
+    /// </summary>
+    /// <param name="emojis">Reactions/emojis to add.</param>
+    public async Task AddReactionsAsync(params string[] emojis)
+    {
+        foreach (var emoji in emojis)
+            await Bot._rest.CreateReactionAsync(ChannelId, Id, PartialEmoji.FromString(emoji));
+    }
+    
+    /// <summary>
+    /// Remove a reaction.
+    /// </summary>
+    /// <param name="emoji">Reaction/emoji to remove.</param>
+    /// <param name="user">If set, the provide user's reaction will be removed. If <c>null</c>, the bots reaction will be
+    /// removed instead.
+    /// </param>
+    public async Task RemoveReactionAsync(string emoji, User? user = null)
+    {
+        var pe = PartialEmoji.FromString(emoji);
+        if (user is null)
+            await Bot._rest.DeleteOwnReactionAsync(ChannelId, Id, pe);
+        else
+            await Bot._rest.DeleteUserReactionAsync(ChannelId, Id, pe, user);
+    }
+    
+    /// <summary>
+    /// Request the users that reacted to the message using the specified emoji.
+    /// </summary>
+    /// <param name="emoji">The reaction/emoji.</param>
+    /// <param name="amount">Amount of users to request (100 max yielded per loop). Can be <c>null</c> to request
+    /// <b>all</b> users, and depending on the amount of reacts it can take a while.
+    /// </param>
+    /// <param name="after">Request users whose accounts were created after the given date.</param>
+    /// <param name="type">Type of reaction.</param>
+    /// <returns>The requested amount of users.</returns>
+    public async IAsyncEnumerable<ICollection<User>> UsersForReactionAsync(string emoji, int? amount = 100,
+        DateTime? after = null,
+        ReactionType type = ReactionType.Normal)
+    {
+        const int indefinite = -1;
+        var remaining = amount ?? indefinite;
+
+        var afterSnowflakeTime = after is not null ? Util.DateTimeToSnowflake(after.Value) : 0;
+        var hasMore = true;
+        var yielded = new List<User>();
+
+        do
+        {
+            yielded.Clear();
+            var requestAmount = remaining == indefinite ? 100 : Math.Min(remaining, 100);
+            var users = await Bot._rest.GetReactionsAsync(ChannelId, Id, PartialEmoji.FromString(emoji), type,
+                requestAmount, afterSnowflakeTime);
+            if (users.Count < 100)
+                hasMore = false;
+
+            foreach (var user in users)
+            {
+                yielded.Add(user);
+                if (remaining == indefinite) continue;
+
+                remaining -= 1;
+                if (remaining == 0)
+                    hasMore = false;
+            }
+
+            afterSnowflakeTime = users.Last().Id;
+            yield return yielded;
+        } while (hasMore);
+    }
+
+    /// <summary>
+    /// Removes all reactions.
+    /// </summary>
+    /// <param name="emoji">If set, removes all specified reactions/emojis.</param>
+    public async Task RemoveAllReactionsAsync(string? emoji = null)
+    {
+        if (emoji is null)
+            await Bot._rest.DeleteAllReactions(ChannelId, Id);
+        else
+            await Bot._rest.DeleteAllReactionsForEmoji(ChannelId, Id, PartialEmoji.FromString(emoji));
+    }
+
+    /// <summary>
+    /// Retrieve a reaction on the message.
+    /// </summary>
+    /// <param name="emoji">The emoji that represents the reaction.</param>
+    /// <returns>The reaction matching the provided emoji, or <c>null</c> if not found.</returns>
+    /// <remarks>This will always be <c>null</c> if not used on a cached message. Meaning if used on a message that was sent and
+    /// the message object is returned from that method, this will be <c>null</c>. Only when retrieved from the cache will this
+    /// have a value. Example:
+    /// <code>
+    ///     var sent = await message.Channel.SendAsync("discord.cs");
+    ///     await sent.AddReactionAsync("😎");
+    ///     var reaction1 = sent.GetReaction("😎"); // Will be null
+    ///
+    ///
+    /// 
+    ///     var cached = bot.GetMessage(sent.Id);
+    ///     var reaction2 = cached.GetReaction("😎"); // Contains the reaction
+    /// </code>
+    /// </remarks>
+    public Reaction? GetReaction(string emoji)
+    {
+        var pe = PartialEmoji.FromString(emoji);
+        if (_reactions.FirstOrDefault(r => r.Emoji.Equals(pe)) is { } reaction)
+            return reaction;
+        return null;
+    }
+
+    /// <summary>
+    /// Reply to a message.
+    /// </summary>
+    /// <param name="content">Content of the message.</param>
+    /// <param name="silent">If <c>true</c>, mentions will not provide a desktop or push notification.</param>
+    /// <param name="tts">Whether this is a TTS message.</param>
+    /// <param name="embeds">Embeds (max 10), up to 6000 characters total.</param>
+    /// <param name="allowedMentions">Allowed mentions for the message.</param>
+    /// <param name="stickers">Up to 3 stickers to send in the message.</param>
+    /// <param name="poll">A poll.</param>
+    /// <param name="files">Files to upload with the message.</param>
+    /// <returns>The message that was sent.</returns>
     public async Task<Message> ReplyAsync(string? content = null, bool silent = false, bool tts = false,
         IEnumerable<Embed>? embeds = null,
         AllowedMentions? allowedMentions = null, IEnumerable<GuildSticker>? stickers = null, Poll? poll = null,
@@ -524,59 +644,6 @@ public enum MessageHistory
     Before,
     After,
     Around
-}
-
-/// <summary>
-/// Represents a <see cref="Message"/> reaction.
-/// </summary>
-public record Reaction
-{
-    // DOCS: https://discord.com/developers/docs/resources/message#reaction-object
-    
-    /// <summary>
-    /// Total number of times this emoji have been used to react (including super reacts).
-    /// </summary>
-    [JsonProperty("count")]
-    public int Count { get; internal set; }
-
-    /// <summary>
-    /// Contains the counts for normal and burst reactions.
-    /// </summary>
-    public (int Burst, int Normal) CountDetails { get; internal set; }
-
-    /// <summary>
-    /// Whether the current user reacted using this emoji.
-    /// </summary>
-    [JsonProperty("me")]
-    public bool Me { get; internal set; }
-
-    /// <summary>
-    /// Whether the current user super-reacted using this emoji.
-    /// </summary>
-    [JsonProperty("me_burst")]
-    public bool MeBurst { get; internal set; }
-
-    /// <summary>
-    /// Emoji that represents the reaction.
-    /// </summary>
-    [JsonProperty("emoji")]
-    public PartialEmoji Emoji { get; internal set; }
-
-    /// <summary>
-    /// Colors used for the super reaction.
-    /// </summary>
-    public IReadOnlyCollection<Color> Colors { get; internal set; } = [];
-
-    [JsonConstructor]
-    internal Reaction(JSON count_details, JSON emoji, List<string> burst_colors)
-    {
-        var burst = Convert.ToInt32(count_details["burst"]);
-        var normal = Convert.ToInt32(count_details["normal"]);
-        CountDetails = (burst, normal);
-        var doc = JsonDocument.Parse(JsonConvert.SerializeObject(emoji));
-        Emoji = Gateway.Deserialize<PartialEmoji>(doc.RootElement);
-        Colors = burst_colors.Select(val => new Color(val)).ToList();
-    }
 }
 
 /// <summary>

@@ -221,7 +221,7 @@ public class PartialEmoji : IEquatable<PartialEmoji>
     }
     
     public override bool Equals(object? other) => other is PartialEmoji partial && Equals(partial);
-    public bool Equals(PartialEmoji? other) => Id == other?.Id;
+    public bool Equals(PartialEmoji? other) => ToString() == other?.ToString();
     public override int GetHashCode() => Id.GetHashCode();
 
     /// <summary>

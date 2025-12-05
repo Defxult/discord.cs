@@ -196,6 +196,41 @@ public sealed class Gateway
     
     #endregion
 
+    #region GUILD/DIRECT MESSAGE REACTIONS
+
+    /// <summary>
+    /// Dispatched when a reaction is added to a message.
+    /// The values provided to the event handler contains the following:
+    /// <list type="bullet">
+    ///     <item><c>details</c> Reaction details.</item>
+    ///     <item><c>reaction</c> The reaction object if the message was found in the cache.</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>Requires <see cref="Intent.GuildMessageReactions"/> and or <see cref="Intent.DmReactions"/>.</remarks>
+    public event EventHandler<(ReactionDetails details, Reaction? reaction)>? OnReactionAdd; 
+    
+    /// <summary>
+    /// Dispatched when a user removes a reaction from a message. Contains information about the reaction that was removed.
+    /// </summary>
+    /// <remarks>Requires <see cref="Intent.GuildMessageReactions"/> and or <see cref="Intent.DmReactions"/>.</remarks>
+    public event EventHandler<ReactionRemove>? OnReactionRemove; 
+    
+    /// <summary>
+    /// Dispatched when a user explicitly removes all reactions from a message. Contains information about the reaction
+    /// that was removed.
+    /// </summary>
+    /// <remarks>Requires <see cref="Intent.GuildMessageReactions"/> and or <see cref="Intent.DmReactions"/>.</remarks>
+    public event EventHandler<ReactionRemove>? OnReactionRemoveAll; 
+    
+    /// <summary>
+    /// Dispatched when a bot removes all instances of a given emoji from the reactions of a message. Contains information about the reaction
+    /// that was removed.
+    /// </summary>
+    /// <remarks>Requires <see cref="Intent.GuildMessageReactions"/> and or <see cref="Intent.DmReactions"/>.</remarks>
+    public event EventHandler<ReactionRemove>? OnReactionRemoveEmoji; 
+
+    #endregion
+
     #region SOUNDBOARD
 
     /// <summary>
@@ -972,6 +1007,56 @@ public sealed class Gateway
                         }
                         OnGuildSoundboardSoundDelete?.Invoke(this, (gsdGuildId, gsdSoundId, gsdSound));
                         break;
+
+                    #region GUILD/DM MESSAGE REACTIONS
+
+                    case "MESSAGE_REACTION_ADD":
+                        var mraReactionDetails = Deserialize<ReactionDetails>(d);
+                        if (_bot.GetMessage(mraReactionDetails.MessageId) is { } mraMessage)
+                        {
+                            if (mraMessage.GetReaction(mraReactionDetails.Emoji.ToString()) is { } mraReaction)
+                            {
+                                mraReaction.Count += 1;
+                                mraReaction.Details = mraReactionDetails;
+                                if (mraReactionDetails.IsBurst)
+                                    mraReaction.CountDetails.Burst += 1;
+                                else
+                                    mraReaction.CountDetails.Normal += 1;
+                                OnReactionAdd?.Invoke(this, (mraReactionDetails, mraReaction));
+                                break;
+                            }
+                            else
+                            {
+                                var isMe = mraReactionDetails.UserId == _bot.User!.Id;
+                                var burstCount = mraReactionDetails.IsBurst ? 1 : 0;
+                                var countDetails = new ReactionCountDetails(burstCount, burstCount == 0 ? 1 : 0);
+                                var mraNewReaction = new Reaction(1, mraReactionDetails, isMe,
+                                    mraReactionDetails.IsBurst && isMe, mraReactionDetails.Emoji,
+                                    mraReactionDetails.BurstColors.ToList(), countDetails);
+                                mraMessage._reactions.Add(mraNewReaction);
+                                OnReactionAdd?.Invoke(this, (mraReactionDetails, mraNewReaction));
+                                break;
+                            }
+                        }
+                        OnReactionAdd?.Invoke(this, (mraReactionDetails, null));
+                        break;
+                    case "MESSAGE_REACTION_REMOVE":
+                        var mrrReactionDelete = Deserialize<ReactionRemove>(d);
+                        RemoveReaction(mrrReactionDelete);
+                        OnReactionRemove?.Invoke(this, mrrReactionDelete);
+                        break;
+                    case "MESSAGE_REACTION_REMOVE_ALL":
+                        var mrraReactionDelete = Deserialize<ReactionRemove>(d);
+                        if (_bot.GetMessage(mrraReactionDelete.MessageId) is { } mrraMessage)
+                            mrraMessage._reactions.Clear();
+                        OnReactionRemoveAll?.Invoke(this, mrraReactionDelete);
+                        break;
+                    case "MESSAGE_REACTION_REMOVE_EMOJI":
+                        var mrreReactionDelete = Deserialize<ReactionRemove>(d);
+                        RemoveReaction(mrreReactionDelete);
+                        OnReactionRemoveEmoji?.Invoke(this, mrreReactionDelete);
+                        break;
+                    #endregion
                 }
                 break;
 
@@ -1022,6 +1107,13 @@ public sealed class Gateway
 
         return;
 
+        void RemoveReaction(ReactionRemove rr)
+        {
+            if (_bot.GetMessage(rr.MessageId) is not { } message) return;
+            if (message.GetReaction(rr.Emoji!.ToString()) is { } mrrReaction)
+                message._reactions.Remove(mrrReaction);
+        }
+        
         JsonElement D() => payload.D!.Value;
     }
 }

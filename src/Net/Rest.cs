@@ -1032,6 +1032,79 @@ internal class Rest
         return message;
     }
     
+    private string? ParseUrlEncodedPartialEmoji(PartialEmoji emoji) =>
+        emoji.Id != null ? $"{emoji.Name}:{emoji.Id}" : emoji.Name;
+    
+    // Create a reaction for the message. This endpoint requires the READ_MESSAGE_HISTORY permission to be present on
+    // the current user. Additionally, if nobody else has reacted to the message using this emoji, this endpoint
+    // requires the ADD_REACTIONS permission to be present on the current user. Returns a 204 empty response on success.
+    // Fires a Message Reaction Add Gateway event. The emoji must be URL Encoded or the request will fail with
+    // 10014: Unknown Emoji. To use custom emoji, you must encode it in the format name:id with the emoji name and
+    // emoji id.
+    // https://discord.com/developers/docs/resources/message#create-reaction
+    internal async Task CreateReactionAsync(ulong channelId, ulong messageId, PartialEmoji emoji)
+    {
+        var value = ParseUrlEncodedPartialEmoji(emoji);
+        var escaped = Uri.EscapeDataString(value!);
+        await RequestAsync(Put, Route($"/channels/{channelId}/messages/{messageId}/reactions/{escaped}/@me"));
+    }
+    
+    // Delete a reaction the current user has made for the message. Returns a 204 empty response on success. Fires a
+    // Message Reaction Remove Gateway event. The emoji must be URL Encoded or the request will fail with 10014:
+    // Unknown Emoji. To use custom emoji, you must encode it in the format name:id with the emoji name and emoji id.
+    // https://discord.com/developers/docs/resources/message#delete-own-reaction
+    internal async Task DeleteOwnReactionAsync(ulong channelId, ulong messageId, PartialEmoji emoji)
+    {
+        var value = ParseUrlEncodedPartialEmoji(emoji);
+        var escaped = Uri.EscapeDataString(value!);
+        await RequestAsync(Delete, Route($"/channels/{channelId}/messages/{messageId}/reactions/{escaped}/@me"));
+    }
+    
+    // Deletes another user's reaction. This endpoint requires the MANAGE_MESSAGES permission to be present on the current
+    // user. Returns a 204 empty response on success. Fires a Message Reaction Remove Gateway event. The emoji must be URL
+    // Encoded or the request will fail with 10014: Unknown Emoji. To use custom emoji, you must encode it in the format
+    // name:id with the emoji name and emoji id.
+    // https://discord.com/developers/docs/resources/message#delete-user-reaction
+    internal async Task DeleteUserReactionAsync(ulong channelId, ulong messageId, PartialEmoji emoji, User user)
+    {
+        var value = ParseUrlEncodedPartialEmoji(emoji);
+        var escaped = Uri.EscapeDataString(value!);
+        await RequestAsync(Delete, Route($"/channels/{channelId}/messages/{messageId}/reactions/{escaped}/{user.Id}"));
+    }
+    
+    // Get a list of users that reacted with this emoji. Returns an array of user objects on success. The emoji must be
+    // URL Encoded or the request will fail with 10014: Unknown Emoji. To use custom emoji, you must encode it in the
+    // format name:id with the emoji name and emoji id.
+    // https://discord.com/developers/docs/resources/message#get-reactions
+    internal async Task<List<User>> GetReactionsAsync(ulong channelId, ulong messageId, PartialEmoji emoji, ReactionType type, int limit,
+        ulong afterSnowflake)
+    {
+        var value = ParseUrlEncodedPartialEmoji(emoji);
+        var escaped = Uri.EscapeDataString(value!);
+        string data = await RequestAsync(Get, Route($"/channels/{channelId}/messages/{messageId}/reactions/{escaped}?type={(int)type}&limit={limit}&after={afterSnowflake}"));
+        var users = JsonConvert.DeserializeObject<List<User>>(data)!;
+        return users;
+    }
+    
+    // Deletes all reactions on a message. This endpoint requires the MANAGE_MESSAGES permission to be present on the
+    // current user. Fires a Message Reaction Remove All Gateway event.
+    // https://discord.com/developers/docs/resources/message#delete-all-reactions
+    internal async Task DeleteAllReactions(ulong channelId, ulong messageId) =>
+        await RequestAsync(Delete, Route($"/channels/{channelId}/messages/{messageId}/reactions"));
+    
+    // Deletes all the reactions for a given emoji on a message. This endpoint requires the MANAGE_MESSAGES permission
+    // to be present on the current user. Fires a Message Reaction Remove Emoji Gateway event. The emoji must be URL
+    // Encoded or the request will fail with 10014: Unknown Emoji. To use custom emoji, you must encode it in the format
+    // name:id with the emoji name and emoji id.
+    // https://discord.com/developers/docs/resources/message#delete-all-reactions-for-emoji
+    internal async Task DeleteAllReactionsForEmoji(ulong channelId, ulong messageId, PartialEmoji emoji)
+    {
+        var value = ParseUrlEncodedPartialEmoji(emoji);
+        var escaped = Uri.EscapeDataString(value!);
+        await RequestAsync(Delete, Route($"/channels/{channelId}/messages/{messageId}/reactions/{escaped}"));
+    }
+
+
     // Delete a message. If operating on a guild channel and trying to delete a message that was not sent by the current
     // user, this endpoint requires the MANAGE_MESSAGES permission. Returns a 204 empty response on success. Fires a
     // Message Delete Gateway event.
@@ -1444,6 +1517,18 @@ internal class Rest
     // https://discord.com/developers/docs/resources/webhook#delete-webhook-with-token
     internal static async Task DeleteWebhookWithTokenAsync(ulong webhookId, string webhookToken, HttpClient http) =>
         await http.DeleteAsync(Route($"/webhooks/{webhookId}/{webhookToken}"));
+    
+    // https://discord.com/developers/docs/resources/webhook#execute-webhook
+    internal async Task<WebhookMessage?> ExecuteWebhookAsync(Webhook webhook, ulong? threadId, bool wait, MultipartFormDataContent form)
+    {
+        var query = Route($"/webhooks/{webhook.Id}/{webhook.Token}?wait={wait}");
+        if (threadId != null) 
+            query += $"&thread_id={threadId}";
+        string data = await RequestAsync(Post, query, form);
+        if (!wait) return null;
+        var message = JsonConvert.DeserializeObject<WebhookMessage>(data)!;
+        return message;
+    }
 
     #endregion
     
@@ -1534,6 +1619,32 @@ internal class Rest
 
         return await tcs.Task;
     }
+    
+    private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage old)
+    {
+        var clone = new HttpRequestMessage(old.Method, old.RequestUri);
+
+        // Copy content
+        if (old.Content != null)
+        {
+            var ms = new MemoryStream();
+            await old.Content.CopyToAsync(ms);
+            ms.Position = 0;
+
+            var newContent = new StreamContent(ms);
+
+            foreach (var h in old.Content.Headers)
+                newContent.Headers.TryAddWithoutValidation(h.Key, h.Value);
+
+            clone.Content = newContent;
+        }
+
+        // Copy headers
+        foreach (var h in old.Headers)
+            clone.Headers.TryAddWithoutValidation(h.Key, h.Value);
+
+        return clone;
+    }
 
     private async Task ProcessBucket(string bucketKey, RateLimitBucket bucket)
     {
@@ -1579,7 +1690,8 @@ internal class Rest
             var payload = string.Empty;
             try
             {
-                using var response = await _http.SendAsync(item.request);
+                var cloned = await CloneRequestAsync(item.request);
+                using var response = await _http.SendAsync(cloned);
                 payload = await response.Content.ReadAsStringAsync();
 
                 UpdateBucketFromHeaders(bucketKey, bucket, response.Headers);

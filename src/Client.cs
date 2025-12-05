@@ -27,8 +27,12 @@ public class Bot
     /// <summary>
     /// All users in every guild the bot has access to.
     /// </summary>
-    /// <remarks>This is affected by your <see cref="CacheManager"/> settings.</remarks>
     public IReadOnlySet<User> Users => _guilds.SelectMany(g => g.Members.Select(m => m.User)).ToHashSet();
+    
+    /// <summary>
+    /// All emojis in every guild.
+    /// </summary>
+    public IReadOnlySet<Emoji> Emojis => _guilds.SelectMany(g => g.Emojis).ToHashSet();
     
     /// <summary>
     /// All guilds the bot is currently in.

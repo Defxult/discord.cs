@@ -1,6 +1,9 @@
+using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using Discord.Channels.Abstractions;
+using Discord.Channels.Models;
 using Discord.Net;
+using Discord.Utility;
 using Newtonsoft.Json;
 
 namespace Discord.Models;
@@ -109,8 +112,6 @@ public class Webhook
     public async Task DeleteAsync(string? reason = null) =>
         await Bot._rest.DeleteWebhookAsync(Id, reason);
 
-    #region STATIC
-
     /// <summary>
     /// Request a webhook based on its URL.
     /// </summary>
@@ -170,7 +171,123 @@ public class Webhook
     public static async Task DeleteWithTokenIdAsync(ulong id, string token, HttpClient http) =>
         await Rest.DeleteWebhookWithTokenAsync(id, token, http);
 
-    #endregion
+    /// <summary>
+    /// Send a message to the channel of this webhook.
+    /// </summary>
+    /// <param name="content">Message contents (up to 2000 characters).</param>
+    /// <param name="silent">If <c>true</c>, mentions will not provide a desktop or push notification.</param>
+    /// <param name="username">Override the default username of the webhook.</param>
+    /// <param name="avatarUrl">Override the default avatar of the webhook.</param>
+    /// <param name="tts">Whether this is a TTS message.</param>
+    /// <param name="embeds">Embeds (max 10), up to 6000 characters total.</param>
+    /// <param name="allowedMentions">Allowed mentions for the message.</param>
+    /// <param name="threadId">Send a message to the specified thread within a webhook's channel. The thread will
+    /// automatically be unarchived.
+    /// </param>
+    /// <param name="threadName">Name of the thread to create.</param>
+    /// <param name="wait">Whether it should wait for server confirmation of message send before response, and returns
+    /// the created message.
+    /// </param>
+    /// <param name="appliedTags">Tags to apply if thread is created in a <see cref="ForumChannel"/> or <see cref="MediaChannel"/>.</param>
+    /// <param name="poll">A poll.</param>
+    /// <param name="files">Files to upload with the message.</param>
+    /// <returns>A webhook message if <paramref name="wait"/> is <c>true</c>, <c>null</c> otherwise.</returns>
+    /// <remarks>
+    /// If the webhook channel is a <see cref="ForumChannel"/> or <see cref="MediaChannel"/>, you must provide either
+    /// <paramref name="threadId"/> or <paramref name="threadName"/>. If <paramref name="threadId"/> is provided, the
+    /// message will send in that thread. If <paramref name="threadName"/> is provided, a thread with that name will be
+    /// created in the channel.
+    /// </remarks>
+    public async Task<WebhookMessage?> SendAsync(
+        string? content = null,
+        bool silent = false,
+        string? username = null,
+        string? avatarUrl = null,
+        bool tts = false,
+        IEnumerable<Embed>? embeds = null,
+        AllowedMentions? allowedMentions = null,
+        ulong? threadId = null,
+        string? threadName = null,
+        bool wait = false,
+        IEnumerable<Tag>? appliedTags = null,
+        Poll? poll = null,
+        ICollection<DFile>? files = null)
+    {
+        var form = new MultipartFormDataContent(Dev.Boundary);
+        var payload = new JSON();
+
+        if (content != null)
+        {
+            payload["content"] = content;
+            if (silent)
+                payload["flags"] = Util.FromFlags([MessageFlag.SuppressNotifications]);
+        }
+        if (username != null)
+            payload["username"] = username;
+        if (avatarUrl != null)
+            payload["avatar_url"] = avatarUrl;
+        payload["tts"] = tts;
+        if (embeds != null)
+            payload["embeds"] = embeds;
+        if (allowedMentions is { } am)
+            payload["allowed_mentions"] = am.ToJson();
+        if (appliedTags != null)
+            payload["applied_tags"] = appliedTags.Select(t => t.Id).ToList();
+        if (poll != null)
+            payload["poll"] = poll;
+        if (threadName != null)
+            payload["thread_name"] = threadName;
+        
+        // Files **** (leave as last due to adding to form) ****
+        var jsonContent = new StringContent(JsonConvert.SerializeObject(payload));
+        jsonContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        form.Add(jsonContent, "payload_json");
+        
+        if (files != null)
+        {
+            var list = files.ToList();
+            for (var i = 0; i < list.Count; i++)
+            {
+                var file = list[i];
+                var bac = new ByteArrayContent(file.Bytes);
+                bac.Headers.ContentType = new MediaTypeHeaderValue(file._mimeType);
+                form.Add(bac, $"files[{i}]", file.Name);
+            }
+        }
+
+        return await Bot._rest.ExecuteWebhookAsync(this, threadId, wait, form);
+    }
+}
+
+/// <summary>
+/// Represents a message that was sent via <see cref="Webhook"/>.
+/// </summary>
+public record WebhookMessage
+{
+    /// <inheritdoc cref="Message.Content"/>
+    [JsonProperty("content")]
+    public string Content { get; private set; } = string.Empty;
+    
+    /// <inheritdoc cref="Message.Timestamp"/>
+    [JsonProperty("timestamp")]
+    public DateTime Timestamp { get; init; }
+    
+    /// <inheritdoc cref="Message.Tts"/>
+    [JsonProperty("tts")]
+    public bool Tts { get; init; }
+
+    /// <inheritdoc cref="Message.EveryoneMentioned"/>
+    public bool EveryoneMentioned { get; init; }
+
+    /// <inheritdoc cref="Message.Attachments"/>
+    [JsonProperty("attachments")]
+    public IReadOnlyCollection<MessageAttachment> Attachments { get; init; } = [];
+    
+    /// <inheritdoc cref="Message.Embeds"/>
+    [JsonProperty("embeds")]
+    public IReadOnlyList<Embed> Embeds { get; private set; } = [];
+    
+    private WebhookMessage() { }
 }
 
 /// <summary>

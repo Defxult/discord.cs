@@ -9,7 +9,7 @@ using Newtonsoft.Json.Linq;
 namespace Discord.Utility;
 
 /// <summary>
-/// Contains various methods helpful methods.
+/// Contains various helpful methods.
 /// </summary>
 public static class Util
 {
@@ -381,7 +381,6 @@ public static class Markdown
             return "@" + zeroWidthSpace + (txt.Contains("everyone") ? "everyone" : "here");
         }
     }
-
 
     /// <summary>
     /// Format a date to a Discord timestamp that will display the given timestamp in the user's timezone and locale.
