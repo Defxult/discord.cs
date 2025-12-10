@@ -7,7 +7,7 @@
 <p align="center">An in development Discord API library written in C#.</p>
 
 <p align="center">
-    <img src="https://img.shields.io/static/v1?label=version&style=for-the-badge&message=0.0.4-alpha&color=c869ff">
+    <img src="https://img.shields.io/static/v1?label=version&style=for-the-badge&message=0.0.5-alpha&color=c869ff">
     <!-- <a href="https://google.com"><img src="https://img.shields.io/static/v1?label=guide&style=for-the-badge&message=gitbook&color=5865f2"></a> -->
 </p>
 
