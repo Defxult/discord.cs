@@ -29,14 +29,18 @@ public class AnnouncementChannel : GuildChannel, IMessageable, IThreadable, IInv
     public async Task<Message> SendAsync(string? content = null, bool silent = false, bool tts = false,
         IEnumerable<Embed>? embeds = null,
         AllowedMentions? allowedMentions = null, IEnumerable<GuildSticker>? stickers = null, Poll? poll = null,
-        ICollection<DFile>? files = null, MessageReference? reference = null) =>
+        ICollection<DFile>? files = null, MessageReference? reference = null, bool suppressEmbeds = false) =>
         await ChannelServicer.SendAsync(this, content, silent, tts, embeds, allowedMentions, stickers, poll, files,
-            reference);
+            reference, suppressEmbeds);
 
     /// <inheritdoc/>
     public async Task TriggerTypingAsync(Func<Task>? func = null, CancellationToken ct = default) =>
         await ChannelServicer.TriggerTypingAsync(this, func, ct);
-    
+
+    /// <inheritdoc/>
+    public async Task DeleteMessagesAsync(HashSet<Message> messages, string? reason = null) =>
+        await ChannelServicer.DeleteMessagesAsync(this, messages, reason);
+
     /// <inheritdoc cref="TextChannel.CreatePrivateThreadAsync"/>
     public async Task<ThreadChannel> CreatePrivateThreadAsync(string name, bool invitable = true,
         ThreadArchiveDuration duration = ThreadArchiveDuration.ThreeDays, int? slowModeDelaySeconds = null,

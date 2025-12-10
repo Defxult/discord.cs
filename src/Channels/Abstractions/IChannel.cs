@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 using Discord.Channels.Models;
 using Discord.Models;
@@ -263,11 +264,12 @@ public interface IMessageable : IChannel
     /// <param name="poll">A poll.</param>
     /// <param name="files">Files to upload with the message.</param>
     /// <param name="reference">The referenced message.</param>
+    /// <param name="suppressEmbeds">Whether embeds are suppressed.</param>
     /// <returns>The message that was sent.</returns>
     /// <remarks>Polls and files cannot be in the same message.</remarks>
     public Task<Message> SendAsync(string? content = null, bool silent = false, bool tts = false, IEnumerable<Embed>? embeds = null,
         AllowedMentions? allowedMentions = null, IEnumerable<GuildSticker>? stickers = null, Poll? poll = null,
-        ICollection<DFile>? files = null, MessageReference? reference = null);
+        ICollection<DFile>? files = null, MessageReference? reference = null, bool suppressEmbeds = false);
 
     /// <summary>
     /// Trigger the typing indicator.
@@ -278,6 +280,36 @@ public interface IMessageable : IChannel
     /// </param>
     /// <param name="ct">A cancellation token.</param>
     public Task TriggerTypingAsync(Func<Task>? func = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Delete multiple messages at once.
+    /// </summary>
+    /// <param name="messages">Messages to delete (2 min, 100 max).</param>
+    /// <param name="reason">Reason for deleting multiple messages. This is displayed in the audit-log.</param>
+    /// <remarks>This cannot delete messages older than 2 weeks.</remarks>
+    public Task DeleteMessagesAsync(HashSet<Message> messages, string? reason = null);
+    
+    internal static MultipartFormDataContent CreateForm(JSON payload, ICollection<DFile>? files)
+    {
+        var form = new MultipartFormDataContent(Dev.Boundary);
+        var jsonContent = new StringContent(JsonConvert.SerializeObject(payload));
+        jsonContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        
+        // Add as payload_json
+        form.Add(jsonContent, "payload_json");
+        if (files != null)
+        {
+            var list = files.ToList();
+            for (var i = 0; i < list.Count; i++)
+            {
+                var file = list[i];
+                var bac = new ByteArrayContent(file.Bytes);
+                bac.Headers.ContentType = new MediaTypeHeaderValue(file._mimeType);
+                form.Add(bac, $"files[{i}]", file.Name);
+            }
+        }
+        return form;
+    }
 }
 
 /// <summary>

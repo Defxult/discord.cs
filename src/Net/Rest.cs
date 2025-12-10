@@ -1104,7 +1104,16 @@ internal class Rest
         await RequestAsync(Delete, Route($"/channels/{channelId}/messages/{messageId}/reactions/{escaped}"));
     }
 
-
+    // https://discord.com/developers/docs/resources/message#edit-message
+    internal async Task<Message> EditMessage(ulong channelId, ulong messageId, MessageEdit edit)
+    {
+        var form = IMessageable.CreateForm(edit._payload, edit._files.ToList());
+        string data = await RequestAsync(Patch, Route($"/channels/{channelId}/messages/{messageId}"), form);
+        var message = JsonConvert.DeserializeObject<Message>(data)!;
+        SetMessageValues([message]);
+        return message;
+    }
+    
     // Delete a message. If operating on a guild channel and trying to delete a message that was not sent by the current
     // user, this endpoint requires the MANAGE_MESSAGES permission. Returns a 204 empty response on success. Fires a
     // Message Delete Gateway event.
@@ -1112,6 +1121,22 @@ internal class Rest
     internal async Task DeleteMessageAsync(ulong channelId, ulong messageId, string? reason)
     {
         await RequestAsync(Delete, Route($"/channels/{channelId}/messages/{messageId}"), auditReason: reason);
+    }
+    
+    // Delete multiple messages in a single request. This endpoint can only be used on guild channels and requires the
+    // MANAGE_MESSAGES permission. Returns a 204 empty response on success. Fires a Message Delete Bulk Gateway event.
+    // 
+    // Any message IDs given that do not exist or are invalid will count towards the minimum and maximum message count
+    // (currently 2 and 100 respectively).
+    // 
+    // This endpoint will not delete messages older than 2 weeks, and will fail with a 400 BAD REQUEST if any message
+    // provided is older than that or if any duplicate message IDs are provided.
+    // https://discord.com/developers/docs/resources/message#bulk-delete-messages
+    internal async Task BulkDeleteMessages(IMessageable messageable, HashSet<Message> messages, string? reason = null)
+    {
+        var messageIds = messages.Select(m => m.Id).ToList();
+        var payload = new JSON { { "messages", messageIds } };
+        await RequestAsync(Post, Route($"/channels/{messageable.Id}/messages/bulk-delete"), payload, reason);
     }
 
     #endregion

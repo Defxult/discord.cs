@@ -213,7 +213,6 @@ public class Webhook
         Poll? poll = null,
         ICollection<DFile>? files = null)
     {
-        var form = new MultipartFormDataContent(Dev.Boundary);
         var payload = new JSON();
 
         if (content != null)
@@ -238,23 +237,7 @@ public class Webhook
         if (threadName != null)
             payload["thread_name"] = threadName;
         
-        // Files **** (leave as last due to adding to form) ****
-        var jsonContent = new StringContent(JsonConvert.SerializeObject(payload));
-        jsonContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        form.Add(jsonContent, "payload_json");
-        
-        if (files != null)
-        {
-            var list = files.ToList();
-            for (var i = 0; i < list.Count; i++)
-            {
-                var file = list[i];
-                var bac = new ByteArrayContent(file.Bytes);
-                bac.Headers.ContentType = new MediaTypeHeaderValue(file._mimeType);
-                form.Add(bac, $"files[{i}]", file.Name);
-            }
-        }
-
+        var form = IMessageable.CreateForm(payload, files);
         return await Bot._rest.ExecuteWebhookAsync(this, threadId, wait, form);
     }
 }

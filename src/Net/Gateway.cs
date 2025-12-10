@@ -194,6 +194,43 @@ public sealed class Gateway
     /// <remarks>Requires <see cref="Intent.GuildMessages"/> and or <see cref="Intent.DmMessages"/>.</remarks>
     public event EventHandler<Message>? OnMessageCreate;
     
+    /// <summary>
+    /// Dispatched when a message is updated.
+    /// The values provided to the event handler contains the following:
+    /// <list type="bullet">
+    ///     <item><c>before</c> Message before the update. Can be <c>null</c> if not found in cache.</item>
+    ///     <item><c>after</c> Message after the update.</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>Requires <see cref="Intent.GuildMessages"/> and or <see cref="Intent.DmMessages"/>.</remarks>
+    public event EventHandler<(Message? before, Message after)>? OnMessageUpdate;
+    
+    /// <summary>
+    /// Dispatched when a message is deleted.
+    /// The values provided to the event handler contains the following:
+    /// <list type="bullet">
+    ///     <item><c>message</c> Message that was deleted, or <c>null</c> if not found in cache.</item>
+    ///     <item><c>messageId</c> ID of the message.</item>
+    ///     <item><c>channelId</c> ID of the channel.</item>
+    ///     <item><c>guildId</c> ID of the guild.</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>Requires <see cref="Intent.GuildMessages"/> and or <see cref="Intent.DmMessages"/>.</remarks>
+    public event EventHandler<(Message? message, ulong messageId, ulong channelId, ulong? guildId)>? OnMessageDelete; 
+    
+    /// <summary>
+    /// Dispatched when multiple messages were deleted at once.
+    /// The values provided to the event handler contains the following:
+    /// <list type="bullet">
+    ///     <item><c>messages</c> Messages that was deleted. If certain messages are missing, they were not found in cache.</item>
+    ///     <item><c>ids</c> IDs of the messages.</item>
+    ///     <item><c>channelId</c> ID of the channel.</item>
+    ///     <item><c>guildId</c> ID of the guild.</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>Requires <see cref="Intent.GuildMessages"/> and or <see cref="Intent.DmMessages"/>.</remarks>
+    public event EventHandler<(IReadOnlyCollection<Message> messages, IReadOnlyCollection<ulong> messageIds, ulong channelId, ulong? guildId)>? OnBulkMessageDelete; 
+    
     #endregion
 
     #region GUILD/DIRECT MESSAGE REACTIONS
@@ -967,8 +1004,39 @@ public sealed class Gateway
                         OnMessageCreate?.Invoke(this, createdMessage);
                         break;
                     case "MESSAGE_UPDATE":
+                        var muMessageAfter = Deserialize<Message>(d);
+                        _bot._rest.SetMessageValues([muMessageAfter]);
+                        var muMessageBefore = _bot.GetMessage(muMessageAfter.Id);
+                        _bot._cachedMessages.RemoveWhere(m => m.Id == muMessageAfter.Id);
+                        _bot.CacheMessage(muMessageAfter);
+                        OnMessageUpdate?.Invoke(this, (muMessageBefore, muMessageAfter));
                         break;
-
+                    case "MESSAGE_DELETE":
+                        var mdMessageId = Deserialize<ulong>(GetElementValue(d, "id"));
+                        var mdChannelId = Deserialize<ulong>(GetElementValue(d, "channel_id"));
+                        ulong? mdGuildId = d.TryGetProperty("guild_id", out var mdGuildIdElement)
+                            ? Deserialize<ulong>(mdGuildIdElement)
+                            : null;
+                        var mdDeletedMessage = _bot.GetMessage(mdMessageId);
+                        if (mdDeletedMessage is not null)
+                            _bot._cachedMessages.Remove(mdDeletedMessage);
+                        OnMessageDelete?.Invoke(this, (mdDeletedMessage, mdMessageId, mdChannelId, mdGuildId));
+                        break;
+                    case "MESSAGE_DELETE_BULK":
+                        var mdbMessageIds = Deserialize<List<ulong>>(GetElementValue(d, "ids"));
+                        var mdbChannelId = Deserialize<ulong>(GetElementValue(d, "channel_id"));
+                        ulong? mdbGuildId = d.TryGetProperty("guild_id", out var mbdGuildIdElement)
+                            ? Deserialize<ulong>(mbdGuildIdElement)
+                            : null;
+                        var mdbDeletedMessages = new List<Message>();
+                        foreach (var messageId in mdbMessageIds)
+                            if (_bot.GetMessage(messageId) is { } found)
+                                mdbDeletedMessages.Add(found);
+                        foreach (var temp in mdbDeletedMessages)
+                            _bot._cachedMessages.Remove(temp);
+                        OnBulkMessageDelete?.Invoke(this, (mdbDeletedMessages, mdbMessageIds, mdbChannelId, mdbGuildId));
+                        break;
+                    
                     #endregion
                     
                     case "GUILD_MEMBERS_CHUNK":
@@ -979,6 +1047,9 @@ public sealed class Gateway
                         if (_bot.GetGuild(chunkedGuildId) is { } chunkedGuild)
                             chunkedGuild._members.UnionWith(convertedChunkedMembers);
                         break;
+
+                    #region GUILD EXPRESSIONS
+                    
                     case "GUILD_SOUNDBOARD_SOUND_CREATE":
                         var gssCreate = Deserialize<SoundboardSound>(d);
                         _bot._rest.SetSoundboardSoundValues([gssCreate]);
@@ -1008,6 +1079,8 @@ public sealed class Gateway
                         OnGuildSoundboardSoundDelete?.Invoke(this, (gsdGuildId, gsdSoundId, gsdSound));
                         break;
 
+                    #endregion
+                    
                     #region GUILD/DM MESSAGE REACTIONS
 
                     case "MESSAGE_REACTION_ADD":

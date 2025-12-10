@@ -425,14 +425,23 @@ public class Message : IEquatable<Message>
     /// <param name="stickers">Up to 3 stickers to send in the message.</param>
     /// <param name="poll">A poll.</param>
     /// <param name="files">Files to upload with the message.</param>
+    /// <param name="suppressEmbeds">Whether embeds are suppressed.</param>
     /// <returns>The message that was sent.</returns>
     public async Task<Message> ReplyAsync(string? content = null, bool silent = false, bool tts = false,
         IEnumerable<Embed>? embeds = null,
         AllowedMentions? allowedMentions = null, IEnumerable<GuildSticker>? stickers = null, Poll? poll = null,
-        ICollection<DFile>? files = null) =>
+        ICollection<DFile>? files = null, bool suppressEmbeds = false) =>
         await ChannelServicer.SendAsync(Channel, content, silent, tts, embeds, allowedMentions, stickers, poll, files,
-            ToReference());
+            ToReference(), suppressEmbeds);
 
+    /// <summary>
+    /// Edit the message.
+    /// </summary>
+    /// <param name="edit">A message edit instance.</param>
+    /// <returns>The edited message.</returns>
+    public async Task<Message> EditAsync(MessageEdit edit) =>
+        await Bot._rest.EditMessage(ChannelId, Id, edit);
+    
     /// <summary>
     /// Delete the message.
     /// </summary>
@@ -474,7 +483,6 @@ public class Message : IEquatable<Message>
     public async Task PublishAsync() =>
         await Bot._rest.CrosspostMessageAsync(ChannelId, Id);
     
-
     /// <summary>
     /// Create a thread from a message.
     /// </summary>
@@ -501,6 +509,83 @@ public class Message : IEquatable<Message>
 
     private MessageReference ToReference() => 
         new (MessageReferenceType.Default, Id, ChannelId, GuildId, false);
+}
+
+/// <summary>
+/// Represents the values that can be edited for a <see cref="Message"/>.
+/// </summary>
+public struct MessageEdit
+{
+    internal readonly JSON _payload = [];
+    internal IEnumerable<DFile> _files = [];
+    
+    /// <summary>
+    /// Initialize a new message edit instance.
+    /// </summary>
+    public MessageEdit() { }
+
+    /// <summary>
+    /// Set the message content.
+    /// </summary>
+    /// <param name="content"></param>
+    /// <returns>The message edit instance.</returns>
+    public MessageEdit SetContent(string content)
+    {
+        _payload["content"] = content;
+        return this;
+    }
+
+    /// <summary>
+    /// Set the embeds.
+    /// </summary>
+    /// <param name="embeds">Embeds to set.</param>
+    /// <returns>The message edit instance.</returns>
+    public MessageEdit SetEmbeds(IEnumerable<Embed> embeds)
+    {
+        _payload["embeds"] = embeds;
+        return this;
+    }
+
+    /// <summary>
+    /// Set attachments and or files.
+    /// </summary>
+    /// <param name="attachments">Any attachments you would like retained.</param>
+    /// <param name="files">New files that will be attached.</param>
+    /// <returns>The message edit instance.</returns>
+    /// <remarks>
+    /// Both <paramref name="attachments"/> and <paramref name="files"/> can be <c>null</c> to remove all attachments
+    /// </remarks>
+    public MessageEdit SetAttachments(IReadOnlyCollection<MessageAttachment>? attachments, IEnumerable<DFile>? files)
+    {
+        _payload["attachments"] = attachments ?? [];
+        _files = files ?? [];
+        return this;
+    }
+
+    /// <summary>
+    /// Set whether embeds are suppressed.
+    /// </summary>
+    /// <param name="suppressed">If embeds are suppressed.</param>
+    /// <returns>The message edit instance.</returns>
+    public MessageEdit SetSuppressEmbeds(bool suppressed)
+    {
+        if (suppressed)
+            _payload["flags"] = Util.FromFlags([MessageFlag.SuppressEmbeds]);
+        else
+            _payload["flags"] = 0;
+        return this;
+    }
+
+    /// <summary>
+    /// Set allowed mentions.
+    /// </summary>
+    /// <param name="allowedMentions">An allowed mentions object.</param>
+    /// <returns>The message edit instance.</returns>
+    public MessageEdit SetAllowedMentions(AllowedMentions? allowedMentions)
+    {
+        _payload["allowed_mentions"] = allowedMentions?.ToJson();
+        return this;
+    }
 }
 
 /// <summary>

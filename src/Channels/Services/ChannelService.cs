@@ -56,11 +56,9 @@ internal static class ChannelServicer
 
     internal static async Task<Message> SendAsync(IMessageable messageable, string? content, bool silent, bool tts,
         IEnumerable<Embed>? embeds, AllowedMentions? allowedMentions, IEnumerable<GuildSticker>? stickers, Poll? poll,
-        ICollection<DFile>? files, MessageReference? reference)
+        ICollection<DFile>? files, MessageReference? reference, bool suppressEmbeds)
     {
-        var form = new MultipartFormDataContent(Dev.Boundary);
         var bot = messageable.Bot;
-
         var payload = new JSON();
         if (content != null)
         {
@@ -79,26 +77,24 @@ internal static class ChannelServicer
             payload["poll"] = p;
         if (reference != null)
             payload["message_reference"] = reference;
-        
-        
-        // Files **** (leave as last due to adding to form) ****
-        var jsonContent = new StringContent(JsonConvert.SerializeObject(payload));
-        jsonContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-        
-        // Add as payload_json
-        form.Add(jsonContent, "payload_json");
-        
-        if (files != null)
+
+        if (suppressEmbeds)
         {
-            var list = files.ToList();
-            for (var i = 0; i < list.Count; i++)
+            var flags = payload.GetValueOrDefault("flags");
+            if (flags == null)
+                payload["flags"] = Util.FromFlags([MessageFlag.SuppressEmbeds]);
+            else
             {
-                var file = list[i];
-                var bac = new ByteArrayContent(file.Bytes);
-                bac.Headers.ContentType = new MediaTypeHeaderValue(file._mimeType);
-                form.Add(bac, $"files[{i}]", file.Name);
+                var rawValue = (int)payload["flags"]!;
+                var converted = Util.FromBitfield<MessageFlag>(rawValue);
+                converted.Add(MessageFlag.SuppressEmbeds);
+                payload["flags"] = Util.FromFlags(converted);
             }
         }
+        
+        // Files **** (leave as last due to adding to form) ****
+        var form = IMessageable.CreateForm(payload, files);
+        
         if (messageable.Type == ChannelType.Dm)
         {
             var dmChannel = await bot._rest.CreateDmAsync(((DmChannel)messageable).Recipient.Id);
@@ -110,6 +106,9 @@ internal static class ChannelServicer
         bot._rest.SetMessageValues([message]);
         return message;
     }
+
+    internal static async Task DeleteMessagesAsync(IMessageable messageable, HashSet<Message> messages, string? reason = null) =>
+        await messageable.Bot._rest.BulkDeleteMessages(messageable, messages, reason);
 
     internal static async Task<IReadOnlyCollection<Invite>> InvitesAsync<T>(T channel) where T : GuildChannel, IInvitable =>
         await channel.Bot._rest.GetChannelInvitesAsync(channel.Id);
