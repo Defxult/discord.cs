@@ -23,8 +23,8 @@ public record DFile
     /// </summary>
     public bool Spoiler => Name.StartsWith(SpoilerFlag);
 
-    internal string _mimeTypeBase64;
-    internal string _mimeType;
+    internal string _mimeTypeBase64 = null!;
+    internal string _mimeType = null!;
     private const string SpoilerFlag = "SPOILER_";
     
     /// <summary>
